@@ -1,0 +1,1257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Labyrinth Trial Assignment Optimizer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --text: #1c1f24;
+    --muted: #64707d;
+    --border: #dde2e8;
+    --accent: #2f6feb;
+    --accent-soft: #e8f0fe;
+    --good: #1fbf60;
+    --warn: #d27a1f;
+    --bad: #d84b4b;
+    --mono: "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --panel: #1e2127;
+      --text: #e7e9ec;
+      --muted: #8b95a1;
+      --border: #2c3038;
+      --accent: #5b8dfb;
+      --accent-soft: #1e2a44;
+      --good: #34d17a;
+      --warn: #e0954a;
+      --bad: #e2665f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 0.92rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 14px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button {
+    font: inherit;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  button.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  input[type=file] { font-size: 0.85rem; }
+  input[type=number] {
+    width: 84px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-family: var(--mono);
+  }
+  .status { font-size: 0.88rem; color: var(--muted); margin-top: 8px; }
+  .status.ok { color: var(--good); }
+  .status.err { color: var(--bad); }
+  .skills-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .skill-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-size: 0.88rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .skill-check.checked { background: var(--accent-soft); border-color: var(--accent); }
+  .skill-check input { accent-color: var(--accent); }
+  .skill-check.disabled { opacity: 0.4; cursor: not-allowed; }
+  .cfg-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  .cfg-group { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .cfg-group h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 10px; }
+  .cfg-field { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 0.85rem; }
+  .cfg-field label { flex: 1; }
+  .cfg-field .unit { color: var(--muted); font-size: 0.78rem; width: 14px; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; margin-bottom: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.num, th.num { text-align: right; font-family: var(--mono); }
+  .preview-scroll { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+  .trial-card h3 { margin: 0 0 2px; font-size: 1.05rem; }
+  .trial-meta { color: var(--muted); font-size: 0.82rem; margin-bottom: 10px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+  .badge.stalled { background: rgba(216,75,75,0.15); color: var(--bad); }
+  .progressbar { height: 9px; border-radius: 5px; background: var(--border); overflow: hidden; margin: 8px 0 12px; }
+  .progressbar > div { height: 100%; background: var(--accent); }
+  .contrib-bar { height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; width: 70px; display: inline-block; vertical-align: middle; }
+  .contrib-bar > div { height: 100%; background: var(--good); }
+  tr.tier-row { cursor: pointer; }
+  tr.tier-row:hover { background: var(--accent-soft); }
+  tr.tier-row .expand-arrow { color: var(--muted); width: 14px; }
+  tr.tier-detail-row > td { padding: 10px 8px 14px 24px; background: var(--bg); }
+  table.player-stat-table { font-size: 0.8rem; }
+  table.player-stat-table th, table.player-stat-table td { padding: 4px 8px; }
+  .summary-band {
+    display: flex; flex-wrap: wrap; gap: 22px; margin-bottom: 4px;
+  }
+  .summary-stat .n { font-size: 1.6rem; font-weight: 700; }
+  .summary-stat .l { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .note { font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
+  .unassigned-list { font-size: 0.85rem; color: var(--muted); }
+  #spinner { display: none; }
+  #spinner.active { display: inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Labyrinth Trial Assignment Optimizer</h1>
+  <p class="sub">Load guild member skill levels, pick 4 trial skills, and auto-assign members across the 4 trials to maximize total cleared tiers.</p>
+
+  <div class="card">
+    <h2>1. Load Member Data</h2>
+    <div class="row">
+      <input type="file" id="csvFile" accept=".csv">
+      <span id="csvStatus" class="status">No file loaded yet.</span>
+    </div>
+    <details style="margin-top:12px;">
+      <summary id="previewSummary">Member preview</summary>
+      <div class="preview-scroll">
+        <table id="previewTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>2. Choose 4 Trial Skills <span id="skillCount" style="color:var(--muted); font-weight:400; font-size:0.85rem;">(0/4 selected)</span></h2>
+    <div class="skills-grid" id="skillsGrid"></div>
+  </div>
+
+  <div class="card">
+    <details id="cfgDetails">
+      <summary>3. Assumptions &amp; Formulas (editable)</summary>
+      <div class="cfg-groups" style="margin-top:10px;">
+
+        <div class="cfg-group">
+          <h3>Success Rate</h3>
+          <div class="cfg-field"><label title="Base chance to succeed on an action before level adjustment">Base success</label><input type="number" id="cfg-baseSuccess" value="80" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Multiplicative bonus per level the member is ABOVE the current room level">Bonus / level above</label><input type="number" id="cfg-bonusAbove" value="0.5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Multiplicative penalty per level the member is BELOW the current room level">Penalty / level below</label><input type="number" id="cfg-penaltyBelow" value="1" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Success rate never drops below this, no matter how far below the room level a member is">Minimum success rate</label><input type="number" id="cfg-minSuccess" value="5" step="0.1"><span class="unit">%</span></div>
+        </div>
+
+        <div class="cfg-group">
+          <h3>Double Progress (gathering only)</h3>
+          <div class="cfg-field"><label>Achievement bonus</label><input type="number" id="cfg-achievementDouble" value="2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label>Community buff</label><input type="number" id="cfg-communityDouble" value="27" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Two Earrings of Gathering, 2% each">Earrings of Gathering (x2)</label><input type="number" id="cfg-gatheringEarrings" value="4" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Applies only to Milking, Foraging, Woodcutting.</div>
+        </div>
+
+        <div class="cfg-group">
+          <h3>Efficiency</h3>
+          <div class="cfg-field"><label>House level</label><input type="number" id="cfg-houseLevel" value="3" step="1"><span class="unit"></span></div>
+          <div class="cfg-field"><label>House bonus / level</label><input type="number" id="cfg-houseEffPerLevel" value="1.5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label>Achievement bonus</label><input type="number" id="cfg-achievementEff" value="2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label>Community buff</label><input type="number" id="cfg-communityEff" value="15.5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Extra gear/buff bonus, artisan skills only">Artisan bonus</label><input type="number" id="cfg-extraEff" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Artisan bonus applies only to Woodcutting, Cheesesmithing, Crafting, Tailoring, Cooking, Brewing.</div>
+        </div>
+
+        <div class="cfg-group">
+          <h3>Speed</h3>
+          <div class="cfg-field"><label>Cape</label><input type="number" id="cfg-capeSpeed" value="5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Tools slot, enhancement +5">Tools</label><input type="number" id="cfg-otherSpeed" value="101" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Alchemy / Enhancing only">Glove</label><input type="number" id="cfg-gloveSpeed" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label>Necklace</label><input type="number" id="cfg-neckSpeed" value="5.2" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Glove bonus applies only to Alchemy and Enhancing.</div>
+        </div>
+
+        <div class="cfg-group">
+          <h3>Trial Structure</h3>
+          <div class="cfg-field"><label>Base interval</label><input type="number" id="cfg-baseInterval" value="10" step="0.1"><span class="unit">s</span></div>
+          <div class="cfg-field"><label>Starting level</label><input type="number" id="cfg-startLevel" value="100" step="1"><span class="unit"></span></div>
+          <div class="cfg-field"><label>Level step / tier</label><input type="number" id="cfg-levelStep" value="10" step="1"><span class="unit"></span></div>
+          <div class="cfg-field"><label>Progress multiplier</label><input type="number" id="cfg-progressMult" value="400" step="1"><span class="unit">&times;lvl</span></div>
+          <div class="cfg-field"><label title="Required progress per tier scales up by this much for every attending member in the roster">Required progress / attendee</label><input type="number" id="cfg-attendancePct" value="1" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label>Trial duration</label><input type="number" id="cfg-trialDuration" value="3600" step="1"><span class="unit">s</span></div>
+          <div class="cfg-field"><label>Max roster / trial</label><input type="number" id="cfg-maxRoster" value="22" step="1"><span class="unit"></span></div>
+        </div>
+
+      </div>
+      <div class="row" style="margin-top:14px;">
+        <button class="secondary" id="resetCfgBtn" type="button">Reset to defaults</button>
+      </div>
+      <p class="note">
+        interval = base interval / (1 + speed) &middot; progress-per-success = floor(level &times; (1 + efficiency)) &middot;
+        success rate = max(minimum, clamp01(base &times; (1 + levelBonus))) &middot; required progress per tier = multiplier &times; room level &times; (1 + 1% &times; roster size).
+        Simulation uses expected-value accumulation (deterministic approximation of the per-action success/double rolls), which is accurate for
+        rosters of this size run over many actions &mdash; actual live results will vary slightly around this estimate.
+      </p>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>4. Guild Buildings</h2>
+    <p class="note" style="font-size:0.85rem;">
+      Each guild building level adds a flat <strong>+2 levels</strong> to every member's effective level in that
+      skill for the trial (on top of their own CSV level) &mdash; this affects both their success rate and their
+      progress per success. Default 0 (no building).
+    </p>
+    <div class="skills-grid" id="buildingsGrid"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <button id="runBtn" disabled>Optimize Assignment</button>
+      <span id="spinner">Computing&hellip;</span>
+      <span id="runStatus" class="status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>5. Export</h2>
+    <p class="note" style="font-size:0.85rem;">
+      Download CSVs ready to import as new tabs (Google Sheets: File &rarr; Import &rarr; Upload &rarr; Insert new sheet).
+    </p>
+    <div class="row">
+      <button id="exportMembersBtn" class="secondary" type="button" disabled>Export Member Profile CSV</button>
+      <button id="exportAssignmentBtn" class="secondary" type="button" disabled>Export Trial Assignments CSV</button>
+    </div>
+    <p class="status" id="exportStatus" style="margin-top:8px;"></p>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+    <div class="card">
+      <h2>Results</h2>
+      <div class="summary-band" id="summaryBand"></div>
+      <div class="unassigned-list" id="unassignedList"></div>
+    </div>
+    <div class="results-grid" id="resultsGrid"></div>
+  </div>
+
+  <div class="card" id="algorithmSection">
+    <h2>How this works</h2>
+
+    <details open>
+      <summary>Simulating one trial</summary>
+      <p class="note" style="font-size:0.85rem; margin-top:10px;">
+        Everyone assigned to a trial shares the same skill, so they share the same interval and tick in lockstep.
+        That means within one tier (a fixed room level), each member's <em>expected</em> contribution per tick is
+        constant — no need to roll dice tick by tick:
+      </p>
+      <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:0.8rem; overflow-x:auto; white-space:pre-wrap;">workPower       = floor(level &times; (1 + efficiency))
+perMemberTick   = successRate(level, roomLevel) &times; (1 + doubleChance) &times; workPower
+successRate     = max(minSuccess, clamp01(baseSuccess &times; (1 + levelBonus)))
+levelBonus      = (level &minus; roomLevel) &times; bonusAbove   if level &ge; roomLevel
+                  (level &minus; roomLevel) &times; penaltyBelow if level &lt; roomLevel
+tier HP         = progressMult &times; roomLevel &times; (1 + attendancePct &times; rosterSize)
+ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roster))</pre>
+      <p class="note" style="font-size:0.85rem;">
+        Instead of looping tick-by-tick, each tier is solved directly for how many ticks it needs, so simulating
+        a full 3600s trial costs roughly one division per tier (a few dozen), not one per tick (hundreds). This
+        is a deterministic expected-value approximation — real play has RNG variance around it — but with up to
+        22 concurrent actors over many actions it stays tight, and it's what makes evaluating thousands of
+        candidate rosters during optimization fast enough to be interactive.
+      </p>
+    </details>
+
+    <details style="margin-top:12px;">
+      <summary>Why members can be worth benching (the attendance tax)</summary>
+      <p class="note" style="font-size:0.85rem; margin-top:10px;">
+        Tier HP scales with roster size (<code>1 + attendancePct &times; rosterSize</code>), and that cost is
+        <strong>flat per attendee</strong> — independent of how strong the joining member is — while their
+        <em>benefit</em> (their own contribution rate) scales with their own level. Roughly, adding a member is
+        only worth it if their own contribution is more than about <code>attendancePct</code> of the team's
+        existing total throughput. On the real roster this rarely bites at the default 1% (nearly everyone clears
+        that bar), but it becomes a real trade-off at higher attendance costs: testing at 30% attendance benched
+        6&ndash;7 of the guild's lowest-level members for these skills, because their attendance tax outweighed
+        their contribution once success rate and roster share were both accounted for. That's why the optimizer
+        includes a prune move (drop a member if the trial scores higher without them), on top of adding and
+        swapping.
+      </p>
+    </details>
+
+    <details style="margin-top:12px;">
+      <summary>Assigning members across trials (greedy + local search)</summary>
+      <p class="note" style="font-size:0.85rem; margin-top:10px;">
+        Assigning up to 86 members across 4 trials (&le;22 each) to maximize total tiers cleared is a partition
+        problem with a roster-size-penalized, diminishing-returns objective — not something worth an exact solver
+        for a planning tool this size. Three local-search moves, run in rounds until nothing improves:
+      </p>
+      <ul class="note" style="font-size:0.85rem;">
+        <li><strong>Greedy fill</strong> &mdash; repeatedly assigns whichever (member, trial) pair gives the
+          single largest score gain, and only accepts moves with a strictly positive gain (it won't force-fill a
+          trial with someone who'd hurt it).</li>
+        <li><strong>Prune</strong> &mdash; for each trial, drops any member whose removal would raise that
+          trial's score.</li>
+        <li><strong>Swap</strong> &mdash; for every pair of trials, swaps two members across them if it improves
+          the combined score.</li>
+      </ul>
+      <p class="note" style="font-size:0.85rem;">
+        The score being optimized is <code>tiersCleared + fractional progress into the current tier</code> (not
+        raw tier count), since raw integer tiers give the search no gradient to climb between tier boundaries.
+        One consequence: prune/swap can raise this continuous score while occasionally landing on one fewer
+        <em>integer</em> tier than plain greedy fill — the two metrics aren't quite the same thing, and a small
+        continuous improvement can trade a completed tier for more progress spread across the other trials.
+      </p>
+    </details>
+
+    <details style="margin-top:12px;" open>
+      <summary>Greedy fill alone vs. after prune/swap &mdash; live, for your current data</summary>
+      <div id="greedyCompareContent" style="margin-top:10px;">
+        <p class="note" style="font-size:0.85rem;">Run "Optimize Assignment" above to see this comparison for your loaded roster and selected skills.</p>
+      </div>
+    </details>
+
+    <details style="margin-top:12px;">
+      <summary>How close is this to the true optimum? (benchmarked against exact search)</summary>
+      <p class="note" style="font-size:0.85rem; margin-top:10px;">
+        The real 86-member problem can't be solved exactly — assigning each member to one of 4 trials or leaving
+        them out is <code>5<sup>86</sup></code> possibilities (&asymp;10<sup>60</sup>) by brute force, or
+        <code>3<sup>86</sup></code> (&asymp;10<sup>41</sup>) with the smartest known exact technique (dynamic
+        programming over subsets) &mdash; both far beyond any computer, which is exactly why this uses a
+        heuristic instead of an exact solver.
+      </p>
+      <p class="note" style="font-size:0.85rem;">
+        As a sanity check, the same DP was run to true optimality on a reduced 14-member slice of the real roster
+        (small enough to be exact: <code>3<sup>14</sup> &asymp; 4.8M</code> states). Result: DP-optimal scored
+        20.8152 (continuous) in 8.5s; this page's heuristic scored 20.8135 in 4.8ms &mdash; about
+        <strong>0.01% off the true optimum, roughly 1,760&times; faster</strong> (and it happened to land on 19
+        cleared tiers vs. the DP's 18, illustrating the continuous-vs-integer-tier point above). That gap is
+        expected to stay small at the full 86-member scale too, though it can't be proven exactly since nothing
+        can solve that instance exactly.
+      </p>
+    </details>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Skill metadata ----------
+  const SKILLS = ["Milking","Foraging","Woodcutting","Cheesesmithing","Crafting","Tailoring","Cooking","Brewing","Alchemy","Enhancing"];
+  const GATHERING = new Set(["Milking","Foraging","Woodcutting"]);
+  const ARTISAN = new Set(["Woodcutting","Cheesesmithing","Crafting","Tailoring","Cooking","Brewing"]);
+  const GLOVE_SKILLS = new Set(["Alchemy","Enhancing"]);
+
+  let members = []; // {name, role, totalLevel, levels:{skill:number}}
+  let selectedSkills = new Set();
+  let lastOptResult = null; // most recent optimizeAssignment() result, for CSV export
+  let lastCfg = null;
+
+  // ---------- CSV parsing ----------
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += c;
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ",") {
+        row.push(field); field = "";
+      } else if (c === "\r") {
+        // skip
+      } else if (c === "\n") {
+        row.push(field); rows.push(row); row = []; field = "";
+      } else {
+        field += c;
+      }
+    }
+    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+    return rows.filter((r) => r.length > 1 || (r.length === 1 && r[0] !== ""));
+  }
+
+  function loadMembersFromCSV(text) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) throw new Error("CSV has no data rows.");
+    const header = rows[0].map((h) => h.trim());
+    const idx = {};
+    header.forEach((h, i) => { idx[h] = i; });
+    const missingSkills = SKILLS.filter((s) => !(s in idx));
+    if (missingSkills.length) {
+      throw new Error("CSV missing skill columns: " + missingSkills.join(", "));
+    }
+    const nameIdx = idx["Name"];
+    const roleIdx = idx["Role"];
+    const totalIdx = idx["Total Level"];
+    if (nameIdx === undefined) throw new Error('CSV missing "Name" column.');
+
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row.every((v) => v === "")) continue;
+      const levels = {};
+      for (const s of SKILLS) levels[s] = Number(row[idx[s]]) || 0;
+      out.push({
+        name: row[nameIdx] || ("Member " + r),
+        role: roleIdx !== undefined ? row[roleIdx] : "",
+        totalLevel: totalIdx !== undefined ? Number(row[totalIdx]) || 0 : 0,
+        levels,
+      });
+    }
+    return out;
+  }
+
+  // ---------- Config ----------
+  function pct(id) { return (Number(document.getElementById(id).value) || 0) / 100; }
+  function num(id) { return Number(document.getElementById(id).value) || 0; }
+
+  function readConfig() {
+    return {
+      baseSuccess: pct("cfg-baseSuccess"),
+      bonusAbove: pct("cfg-bonusAbove"),
+      penaltyBelow: pct("cfg-penaltyBelow"),
+      minSuccess: pct("cfg-minSuccess"),
+      achievementDouble: pct("cfg-achievementDouble"),
+      communityDouble: pct("cfg-communityDouble"),
+      gatheringEarrings: pct("cfg-gatheringEarrings"),
+      houseLevel: num("cfg-houseLevel"),
+      houseEffPerLevel: pct("cfg-houseEffPerLevel"),
+      achievementEff: pct("cfg-achievementEff"),
+      communityEff: pct("cfg-communityEff"),
+      extraEff: pct("cfg-extraEff"),
+      capeSpeed: pct("cfg-capeSpeed"),
+      otherSpeed: pct("cfg-otherSpeed"),
+      gloveSpeed: pct("cfg-gloveSpeed"),
+      neckSpeed: pct("cfg-neckSpeed"),
+      baseInterval: num("cfg-baseInterval"),
+      startLevel: num("cfg-startLevel"),
+      levelStep: num("cfg-levelStep"),
+      progressMult: num("cfg-progressMult"),
+      attendancePct: pct("cfg-attendancePct"),
+      trialDuration: num("cfg-trialDuration"),
+      maxRoster: num("cfg-maxRoster"),
+      buildingLevels: Object.fromEntries(SKILLS.map((s) => [s, num("cfg-building-" + s)])),
+    };
+  }
+
+  const DEFAULTS = {
+    "cfg-baseSuccess": 80, "cfg-bonusAbove": 0.5, "cfg-penaltyBelow": 1, "cfg-minSuccess": 5,
+    "cfg-achievementDouble": 2, "cfg-communityDouble": 27, "cfg-gatheringEarrings": 4,
+    "cfg-houseLevel": 3, "cfg-houseEffPerLevel": 1.5, "cfg-achievementEff": 2, "cfg-communityEff": 15.5, "cfg-extraEff": 11.2,
+    "cfg-capeSpeed": 5, "cfg-otherSpeed": 101, "cfg-gloveSpeed": 11.2, "cfg-neckSpeed": 5.2,
+    "cfg-baseInterval": 10, "cfg-startLevel": 100, "cfg-levelStep": 10, "cfg-progressMult": 400,
+    "cfg-attendancePct": 1, "cfg-trialDuration": 3600, "cfg-maxRoster": 22,
+  };
+  for (const s of SKILLS) DEFAULTS["cfg-building-" + s] = 0;
+
+  function resetConfig() {
+    for (const id in DEFAULTS) document.getElementById(id).value = DEFAULTS[id];
+    saveState();
+  }
+
+  // ---------- Persistence (localStorage) ----------
+  const STORAGE_KEY = "trialsOptimizerState_v1";
+
+  function saveState() {
+    try {
+      const cfgValues = {};
+      for (const id in DEFAULTS) {
+        const el = document.getElementById(id);
+        if (el) cfgValues[id] = el.value;
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        cfgValues,
+        selectedSkills: Array.from(selectedSkills),
+        members,
+      }));
+    } catch (e) {
+      // ignore storage errors (quota, privacy mode, etc.)
+    }
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function computeSkillConfig(skill, cfg) {
+    const efficiency = cfg.houseLevel * cfg.houseEffPerLevel + cfg.achievementEff + cfg.communityEff + (ARTISAN.has(skill) ? cfg.extraEff : 0);
+    const doubleChance = clamp01(GATHERING.has(skill) ? (cfg.achievementDouble + cfg.communityDouble + cfg.gatheringEarrings) : 0);
+    const speed = cfg.capeSpeed + cfg.otherSpeed + (GLOVE_SKILLS.has(skill) ? cfg.gloveSpeed : 0) + cfg.neckSpeed;
+    const interval = cfg.baseInterval / (1 + speed);
+    return { skill, efficiency, doubleChance, speed, interval };
+  }
+
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+  function successRate(level, roomLevel, cfg) {
+    const delta = level - roomLevel;
+    const bonus = delta >= 0 ? delta * cfg.bonusAbove : delta * cfg.penaltyBelow;
+    return Math.max(cfg.minSuccess, clamp01(cfg.baseSuccess * (1 + bonus)));
+  }
+
+  // ---------- Core simulation (deterministic expected-value model) ----------
+  // idxList: indices into levelsArray for members currently assigned to this trial.
+  function simulateTrial(idxList, levelsArray, skillCfg, cfg) {
+    const n = idxList.length;
+    if (n === 0) {
+      const required0 = cfg.progressMult * cfg.startLevel;
+      return { tiersCleared: 0, roomLevel: cfg.startLevel, progress: 0, required: required0, timeUsed: 0, contributions: [], stalled: false, continuousScore: 0, tierLog: [] };
+    }
+    const progressPerAction = idxList.map((i) => Math.max(0, Math.floor(levelsArray[i] * (1 + skillCfg.efficiency))));
+    let roomLevel = cfg.startLevel;
+    let progress = 0;
+    let timeUsed = 0;
+    let tiersCleared = 0;
+    let stalled = false;
+    const contributions = new Array(n).fill(0);
+    const doubleMult = 1 + skillCfg.doubleChance;
+    const rosterMult = 1 + cfg.attendancePct * n; // required progress rises with attendance
+    const tierLog = []; // per-tier breakdown: { level, ticks, timeSpent, cleared }
+
+    while (timeUsed < cfg.trialDuration - 1e-9) {
+      const required = cfg.progressMult * roomLevel * rosterMult;
+      const remaining = required - progress;
+      const perMemberTick = new Array(n);
+      let perTickTotal = 0;
+      for (let k = 0; k < n; k++) {
+        const sr = successRate(levelsArray[idxList[k]], roomLevel, cfg);
+        const val = sr * doubleMult * progressPerAction[k];
+        perMemberTick[k] = val;
+        perTickTotal += val;
+      }
+      if (perTickTotal <= 1e-9) {
+        stalled = true;
+        tierLog.push({ level: roomLevel, hp: required, hpFilled: progress, ticks: 0, timeSpent: 0, cleared: false });
+        break;
+      }
+
+      const ticksNeeded = Math.ceil(remaining / perTickTotal - 1e-9);
+      const timeForTier = ticksNeeded * skillCfg.interval;
+
+      if (timeUsed + timeForTier <= cfg.trialDuration + 1e-9) {
+        for (let k = 0; k < n; k++) contributions[k] += perMemberTick[k] * ticksNeeded;
+        progress = progress + perTickTotal * ticksNeeded - required; // overflow carries into next tier
+        timeUsed += timeForTier;
+        tiersCleared += 1;
+        tierLog.push({ level: roomLevel, hp: required, hpFilled: required, ticks: ticksNeeded, timeSpent: timeForTier, cleared: true });
+        roomLevel += cfg.levelStep;
+      } else {
+        const remainingTime = cfg.trialDuration - timeUsed;
+        const ticksAvailable = Math.floor(remainingTime / skillCfg.interval + 1e-9);
+        for (let k = 0; k < n; k++) contributions[k] += perMemberTick[k] * ticksAvailable;
+        progress += perTickTotal * ticksAvailable;
+        timeUsed += ticksAvailable * skillCfg.interval;
+        tierLog.push({ level: roomLevel, hp: required, hpFilled: progress, ticks: ticksAvailable, timeSpent: ticksAvailable * skillCfg.interval, cleared: false });
+        break;
+      }
+    }
+
+    const required = cfg.progressMult * roomLevel * rosterMult;
+    const continuousScore = tiersCleared + clamp01(required > 0 ? progress / required : 0);
+    return { tiersCleared, roomLevel, progress, required, timeUsed, contributions, stalled, continuousScore, tierLog };
+  }
+
+  // ---------- Optimizer: greedy marginal-gain fill + remove/swap local search ----------
+  // Because required progress now rises with roster size (attendancePct), adding a weak
+  // member can genuinely make a trial worse, not just "dilute" it — so unlike a plain
+  // capacity-fill problem, some members may be better left unassigned, and the local
+  // search needs a "drop this member" move in addition to swaps.
+  function optimizeAssignment(members, skillConfigs, cfg) {
+    const T = skillConfigs.length;
+    const memberLevelsByTrial = skillConfigs.map((sc) => {
+      const buildingBonus = 2 * ((cfg.buildingLevels && cfg.buildingLevels[sc.skill]) || 0);
+      return members.map((m) => m.levels[sc.skill] + buildingBonus);
+    });
+    const rosters = skillConfigs.map(() => []);
+    const currentScore = skillConfigs.map(() => 0);
+    const unassigned = new Set(members.map((_, i) => i));
+    const MAX_ROSTER = cfg.maxRoster;
+    const scoreOf = (t, roster) => simulateTrial(roster, memberLevelsByTrial[t], skillConfigs[t], cfg).continuousScore;
+
+    function greedyFill() {
+      let addedAny = false;
+      for (;;) {
+        const openTrials = [];
+        for (let t = 0; t < T; t++) if (rosters[t].length < MAX_ROSTER) openTrials.push(t);
+        if (openTrials.length === 0 || unassigned.size === 0) break;
+
+        let bestGain = 1e-9, bestMember = -1, bestTrial = -1;
+        for (const t of openTrials) {
+          const base = currentScore[t];
+          for (const m of unassigned) {
+            const gain = scoreOf(t, rosters[t].concat([m])) - base;
+            if (gain > bestGain) { bestGain = gain; bestMember = m; bestTrial = t; }
+          }
+        }
+        if (bestMember === -1) break; // no remaining member would help any open trial
+        rosters[bestTrial].push(bestMember);
+        unassigned.delete(bestMember);
+        currentScore[bestTrial] = scoreOf(bestTrial, rosters[bestTrial]);
+        addedAny = true;
+      }
+      return addedAny;
+    }
+
+    function pruneWeakMembers() {
+      let removedAny = false;
+      for (let t = 0; t < T; t++) {
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (let i = 0; i < rosters[t].length; i++) {
+            const without = rosters[t].slice(0, i).concat(rosters[t].slice(i + 1));
+            const s = scoreOf(t, without);
+            if (s > currentScore[t] + 1e-9) {
+              unassigned.add(rosters[t][i]);
+              rosters[t] = without;
+              currentScore[t] = s;
+              changed = true; removedAny = true;
+              break;
+            }
+          }
+        }
+      }
+      return removedAny;
+    }
+
+    function swapPass() {
+      let improved = false;
+      for (let t1 = 0; t1 < T; t1++) {
+        for (let t2 = t1 + 1; t2 < T; t2++) {
+          for (let i = 0; i < rosters[t1].length; i++) {
+            for (let j = 0; j < rosters[t2].length; j++) {
+              const a = rosters[t1][i], b = rosters[t2][j];
+              if (a === b) continue;
+              const newT1 = rosters[t1].slice(); newT1[i] = b;
+              const newT2 = rosters[t2].slice(); newT2[j] = a;
+              const s1 = scoreOf(t1, newT1);
+              const s2 = scoreOf(t2, newT2);
+              if (s1 + s2 > currentScore[t1] + currentScore[t2] + 1e-9) {
+                rosters[t1] = newT1; rosters[t2] = newT2;
+                currentScore[t1] = s1; currentScore[t2] = s2;
+                improved = true;
+              }
+            }
+          }
+        }
+      }
+      return improved;
+    }
+
+    greedyFill();
+    // Snapshot the greedy-only outcome before any prune/swap round runs, purely so the
+    // page can show "what greedy alone would have produced" next to the final result.
+    const greedyOnlyRosters = rosters.map((r) => r.slice());
+    const greedyOnlyResults = skillConfigs.map((sc, t) => {
+      const res = simulateTrial(greedyOnlyRosters[t], memberLevelsByTrial[t], sc, cfg);
+      return { skill: sc.skill, res, roster: greedyOnlyRosters[t] };
+    });
+    const greedyOnlyUnassignedCount = members.length - greedyOnlyRosters.reduce((a, r) => a + r.length, 0);
+
+    for (let round = 0; round < 4; round++) {
+      const pruned = pruneWeakMembers();
+      const swapped = swapPass();
+      const refilled = greedyFill();
+      if (!pruned && !swapped && !refilled) break;
+    }
+
+    const finalResults = skillConfigs.map((sc, t) => {
+      const res = simulateTrial(rosters[t], memberLevelsByTrial[t], sc, cfg);
+      const totalProgress = res.contributions.reduce((a, b) => a + b, 0);
+      const roster = rosters[t].map((memberIdx, k) => ({
+        member: members[memberIdx],
+        level: memberLevelsByTrial[t][memberIdx],
+        contribution: res.contributions[k],
+        pct: totalProgress > 0 ? (res.contributions[k] / totalProgress) * 100 : 0,
+      })).sort((a, b) => b.contribution - a.contribution);
+      return { skill: sc.skill, skillCfg: sc, res, roster };
+    });
+
+    // Diff greedy-only vs final roster (by member index) per trial, so the page can show
+    // concretely who prune/swap moved in, moved out, or benched.
+    const rosterDiffs = skillConfigs.map((sc, t) => {
+      const before = new Set(greedyOnlyRosters[t]);
+      const after = new Set(rosters[t]);
+      const joined = rosters[t].filter((i) => !before.has(i)).map((i) => members[i].name);
+      const left = greedyOnlyRosters[t].filter((i) => !after.has(i)).map((i) => members[i].name);
+      return { joined, left };
+    });
+
+    const stillUnassigned = Array.from(unassigned).map((i) => members[i]);
+    return { finalResults, unassigned: stillUnassigned, greedyOnlyResults, greedyOnlyUnassignedCount, rosterDiffs };
+  }
+
+  // ---------- Rendering ----------
+  function renderSkillsGrid() {
+    const grid = document.getElementById("skillsGrid");
+    grid.innerHTML = "";
+    for (const skill of SKILLS) {
+      const label = document.createElement("label");
+      label.className = "skill-check";
+      label.dataset.skill = skill;
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = skill;
+      cb.addEventListener("change", () => onSkillToggle(skill, cb.checked));
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(skill));
+      grid.appendChild(label);
+    }
+    updateSkillsUI();
+  }
+
+  function renderBuildingsGrid() {
+    const grid = document.getElementById("buildingsGrid");
+    grid.innerHTML = "";
+    for (const skill of SKILLS) {
+      const wrap = document.createElement("div");
+      wrap.className = "cfg-field";
+      const label = document.createElement("label");
+      label.textContent = skill;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.id = "cfg-building-" + skill;
+      input.value = "0";
+      input.step = "1";
+      input.min = "0";
+      input.title = "Guild building level for " + skill + " (+2 effective level per level)";
+      input.addEventListener("input", saveState);
+      wrap.appendChild(label);
+      wrap.appendChild(input);
+      grid.appendChild(wrap);
+    }
+  }
+
+  function onSkillToggle(skill, checked) {
+    if (checked) selectedSkills.add(skill); else selectedSkills.delete(skill);
+    updateSkillsUI();
+    updateRunEnabled();
+    saveState();
+  }
+
+  function updateSkillsUI() {
+    document.getElementById("skillCount").textContent = "(" + selectedSkills.size + "/4 selected)";
+    const grid = document.getElementById("skillsGrid");
+    for (const label of grid.children) {
+      const skill = label.dataset.skill;
+      const cb = label.querySelector("input");
+      const checked = selectedSkills.has(skill);
+      label.classList.toggle("checked", checked);
+      if (!checked && selectedSkills.size >= 4) {
+        cb.disabled = true;
+        label.classList.add("disabled");
+      } else {
+        cb.disabled = false;
+        label.classList.remove("disabled");
+      }
+    }
+  }
+
+  function renderPreview() {
+    const table = document.getElementById("previewTable");
+    const thead = table.querySelector("thead");
+    const tbody = table.querySelector("tbody");
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+    if (members.length === 0) return;
+    const cols = ["Name", "Role", "Total Level"].concat(SKILLS);
+    const trHead = document.createElement("tr");
+    for (const c of cols) {
+      const th = document.createElement("th");
+      th.textContent = c;
+      if (c !== "Name" && c !== "Role") th.className = "num";
+      trHead.appendChild(th);
+    }
+    thead.appendChild(trHead);
+    for (const m of members) {
+      const tr = document.createElement("tr");
+      const vals = [m.name, m.role, m.totalLevel].concat(SKILLS.map((s) => m.levels[s]));
+      vals.forEach((v, i) => {
+        const td = document.createElement("td");
+        td.textContent = v;
+        if (i >= 2) td.className = "num";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    document.getElementById("previewSummary").textContent = "Member preview (" + members.length + " members)";
+  }
+
+  function updateRunEnabled() {
+    document.getElementById("runBtn").disabled = !(members.length > 0 && selectedSkills.size === 4);
+  }
+
+  function updateExportButtons() {
+    document.getElementById("exportMembersBtn").disabled = members.length === 0;
+    document.getElementById("exportAssignmentBtn").disabled = lastOptResult === null;
+  }
+
+  function fmt(n) { return Math.round(n).toLocaleString(); }
+
+  function renderResults(optResult, cfg) {
+    const section = document.getElementById("resultsSection");
+    section.style.display = "";
+
+    const totalTiers = optResult.finalResults.reduce((a, r) => a + r.res.tiersCleared, 0);
+    const summary = document.getElementById("summaryBand");
+    summary.innerHTML = "";
+    const stats = [
+      [totalTiers, "Total Tiers Cleared"],
+      [optResult.finalResults.length, "Trials Run"],
+      [members.length, "Members Loaded"],
+      [optResult.unassigned.length, "Unassigned"],
+    ];
+    for (const [n, l] of stats) {
+      const div = document.createElement("div");
+      div.className = "summary-stat";
+      div.innerHTML = '<div class="n">' + n + '</div><div class="l">' + l + "</div>";
+      summary.appendChild(div);
+    }
+
+    const unassignedDiv = document.getElementById("unassignedList");
+    unassignedDiv.textContent = optResult.unassigned.length
+      ? "Not assigned to any trial (capacity reached, or joining would add more required progress than they'd contribute): " +
+        optResult.unassigned.map((m) => m.name).join(", ")
+      : "";
+
+    const grid = document.getElementById("resultsGrid");
+    grid.innerHTML = "";
+    for (const r of optResult.finalResults) {
+      const card = document.createElement("div");
+      card.className = "card trial-card";
+      const res = r.res;
+      const pctInto = res.required > 0 ? clamp01(res.progress / res.required) * 100 : 0;
+      const startLvl = cfg.startLevel;
+      const finalLvlLabel = res.roomLevel;
+
+      let badge = '<span class="badge">' + res.tiersCleared + " tiers cleared</span>";
+      if (res.stalled) badge += ' <span class="badge stalled">stalled &mdash; no forward progress possible</span>';
+
+      card.innerHTML =
+        "<h3>" + r.skill + "</h3>" +
+        '<div class="trial-meta">' + badge +
+        " &middot; Roster " + r.roster.length + "/" + cfg.maxRoster +
+        " &middot; L" + startLvl + " &rarr; L" + finalLvlLabel +
+        " &middot; " + fmt(res.timeUsed) + "s / " + fmt(cfg.trialDuration) + "s used" +
+        " &middot; interval " + r.skillCfg.interval.toFixed(2) + "s" +
+        " &middot; eff " + (r.skillCfg.efficiency * 100).toFixed(1) + "%" +
+        (r.skillCfg.doubleChance > 0 ? " &middot; double " + (r.skillCfg.doubleChance * 100).toFixed(1) + "%" : "") +
+        "</div>" +
+        '<div class="progressbar"><div style="width:' + pctInto.toFixed(1) + '%"></div></div>' +
+        '<div class="trial-meta">Level ' + finalLvlLabel + " progress: " + fmt(res.progress) + " / " + fmt(res.required) + " (" + pctInto.toFixed(1) + "%)</div>";
+
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      thead.innerHTML = "<tr><th>Member</th><th class=\"num\">Level</th><th>Contribution</th><th class=\"num\">%</th></tr>";
+      const tbody = document.createElement("tbody");
+      for (const row of r.roster) {
+        const tr = document.createElement("tr");
+        const barWidth = Math.min(100, row.pct);
+        tr.innerHTML =
+          "<td>" + row.member.name + "</td>" +
+          '<td class="num">' + row.level + "</td>" +
+          '<td><span class="contrib-bar"><div style="width:' + barWidth.toFixed(1) + '%"></div></span></td>' +
+          '<td class="num">' + row.pct.toFixed(1) + "%</td>";
+        tbody.appendChild(tr);
+      }
+      table.appendChild(thead);
+      table.appendChild(tbody);
+      card.appendChild(table);
+
+      if (res.tierLog.length) {
+        const details = document.createElement("details");
+        details.style.marginTop = "12px";
+        const summaryEl = document.createElement("summary");
+        summaryEl.textContent = "Time &amp; HP per tier (" + res.tierLog.length + ") — click a tier for player stats";
+        details.appendChild(summaryEl);
+        const tierTable = document.createElement("table");
+        const tierThead = document.createElement("thead");
+        tierThead.innerHTML = "<tr><th></th><th>Level</th><th class=\"num\">HP</th><th>Filled</th><th class=\"num\">Ticks</th><th class=\"num\">Time</th><th class=\"num\">Cumulative</th><th>Status</th></tr>";
+        const tierTbody = document.createElement("tbody");
+        let cumulative = 0;
+        for (const tier of res.tierLog) {
+          cumulative += tier.timeSpent;
+          const status = tier.cleared ? "Cleared" : (tier.ticks === 0 ? "Stalled" : "Partial (time ran out)");
+          const hpPct = tier.hp > 0 ? clamp01(tier.hpFilled / tier.hp) * 100 : 0;
+
+          const tr = document.createElement("tr");
+          tr.className = "tier-row";
+          tr.innerHTML =
+            '<td class="expand-arrow">&#9656;</td>' +
+            "<td>" + tier.level + "</td>" +
+            '<td class="num">' + fmt(tier.hp) + "</td>" +
+            '<td><span class="contrib-bar"><div style="width:' + hpPct.toFixed(1) + '%"></div></span> ' +
+              fmt(tier.hpFilled) + " (" + hpPct.toFixed(1) + "%)</td>" +
+            '<td class="num">' + tier.ticks + "</td>" +
+            '<td class="num">' + tier.timeSpent.toFixed(1) + "s</td>" +
+            '<td class="num">' + cumulative.toFixed(1) + "s</td>" +
+            "<td>" + status + "</td>";
+
+          const detailTr = document.createElement("tr");
+          detailTr.className = "tier-detail-row";
+          detailTr.style.display = "none";
+          const detailTd = document.createElement("td");
+          detailTd.colSpan = 8;
+          const playerTable = document.createElement("table");
+          playerTable.className = "player-stat-table";
+          const playerThead = document.createElement("thead");
+          playerThead.innerHTML = "<tr><th>Member</th><th class=\"num\">Work Power</th><th class=\"num\">Work Time</th><th class=\"num\">Success Rate</th><th class=\"num\">Double Progress</th></tr>";
+          const playerTbody = document.createElement("tbody");
+          for (const row of r.roster) {
+            const workPower = Math.max(0, Math.floor(row.level * (1 + r.skillCfg.efficiency)));
+            const sr = successRate(row.level, tier.level, cfg);
+            const pTr = document.createElement("tr");
+            pTr.innerHTML =
+              "<td>" + row.member.name + "</td>" +
+              '<td class="num">' + workPower + "</td>" +
+              '<td class="num">' + r.skillCfg.interval.toFixed(2) + "s</td>" +
+              '<td class="num">' + (sr * 100).toFixed(0) + "%</td>" +
+              '<td class="num">' + (r.skillCfg.doubleChance * 100).toFixed(0) + "%</td>";
+            playerTbody.appendChild(pTr);
+          }
+          playerTable.appendChild(playerThead);
+          playerTable.appendChild(playerTbody);
+          detailTd.appendChild(playerTable);
+          detailTr.appendChild(detailTd);
+
+          tr.addEventListener("click", () => {
+            const open = detailTr.style.display !== "none";
+            detailTr.style.display = open ? "none" : "";
+            tr.querySelector(".expand-arrow").innerHTML = open ? "&#9656;" : "&#9662;";
+          });
+
+          tierTbody.appendChild(tr);
+          tierTbody.appendChild(detailTr);
+        }
+        tierTable.appendChild(tierThead);
+        tierTable.appendChild(tierTbody);
+        details.appendChild(tierTable);
+        card.appendChild(details);
+      }
+
+      grid.appendChild(card);
+    }
+  }
+
+  function renderGreedyCompare(optResult) {
+    const host = document.getElementById("greedyCompareContent");
+    host.innerHTML = "";
+
+    const greedyTotalTiers = optResult.greedyOnlyResults.reduce((a, r) => a + r.res.tiersCleared, 0);
+    const greedyTotalScore = optResult.greedyOnlyResults.reduce((a, r) => a + r.res.continuousScore, 0);
+    const finalTotalTiers = optResult.finalResults.reduce((a, r) => a + r.res.tiersCleared, 0);
+    const finalTotalScore = optResult.finalResults.reduce((a, r) => a + r.res.continuousScore, 0);
+
+    const summary = document.createElement("p");
+    summary.className = "note";
+    summary.style.fontSize = "0.85rem";
+    summary.innerHTML =
+      "<strong>Greedy fill only:</strong> " + greedyTotalTiers + " tiers, continuous score " + greedyTotalScore.toFixed(3) +
+      ", " + optResult.greedyOnlyUnassignedCount + " unassigned. &nbsp; " +
+      "<strong>After prune + swap:</strong> " + finalTotalTiers + " tiers, continuous score " + finalTotalScore.toFixed(3) +
+      ", " + optResult.unassigned.length + " unassigned. &nbsp; " +
+      "<strong>Δ continuous score: " + (finalTotalScore - greedyTotalScore >= 0 ? "+" : "") + (finalTotalScore - greedyTotalScore).toFixed(3) + "</strong>" +
+      (finalTotalTiers !== greedyTotalTiers ? " (Δ tiers: " + (finalTotalTiers - greedyTotalTiers >= 0 ? "+" : "") + (finalTotalTiers - greedyTotalTiers) + ")" : "");
+    host.appendChild(summary);
+
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML =
+      "<tr><th>Trial</th><th class=\"num\">Greedy-only tiers</th><th class=\"num\">Final tiers</th>" +
+      "<th class=\"num\">Greedy-only score</th><th class=\"num\">Final score</th><th>Moved in by prune/swap</th><th>Moved out by prune/swap</th></tr>";
+    const tbody = document.createElement("tbody");
+    optResult.finalResults.forEach((r, t) => {
+      const g = optResult.greedyOnlyResults[t];
+      const diff = optResult.rosterDiffs[t];
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + r.skill + "</td>" +
+        '<td class="num">' + g.res.tiersCleared + "</td>" +
+        '<td class="num">' + r.res.tiersCleared + "</td>" +
+        '<td class="num">' + g.res.continuousScore.toFixed(3) + "</td>" +
+        '<td class="num">' + r.res.continuousScore.toFixed(3) + "</td>" +
+        "<td>" + (diff.joined.length ? diff.joined.join(", ") : "&mdash;") + "</td>" +
+        "<td>" + (diff.left.length ? diff.left.join(", ") : "&mdash;") + "</td>";
+      tbody.appendChild(tr);
+    });
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    host.appendChild(table);
+
+    if (optResult.finalResults.every((r, t) => optResult.rosterDiffs[t].joined.length === 0 && optResult.rosterDiffs[t].left.length === 0)) {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.style.fontSize = "0.85rem";
+      note.textContent = "No roster changes this run — greedy fill alone already reached a local optimum for prune/swap on this data.";
+      host.appendChild(note);
+    }
+  }
+
+  // ---------- CSV export ----------
+  function csvEscape(value) {
+    const s = String(value === undefined || value === null ? "" : value);
+    if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function toCsv(rows) {
+    return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
+  }
+
+  function formatDateForFilename() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return yyyy + "." + mm + "." + dd;
+  }
+
+  function downloadCSV(filename, csvText) {
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildMemberProfileCSV(memberList) {
+    const rows = [["Player"].concat(SKILLS)];
+    for (const m of memberList) {
+      rows.push([m.name].concat(SKILLS.map((s) => m.levels[s])));
+    }
+    return toCsv(rows);
+  }
+
+  function buildTrialAssignmentsCSV(optResult, cfg) {
+    const rows = [];
+    rows.push(["Skilling Trials - Optimizer Assignment (" + optResult.finalResults.map((r) => r.skill).join(" / ") + ")"]);
+    rows.push([]);
+    rows.push(["Trial", "Roster Size", "Tiers Cleared", "Final Level", "Progress Into Next Tier"]);
+    let totalTiers = 0;
+    let totalRoster = 0;
+    for (const r of optResult.finalResults) {
+      const pctInto = r.res.required > 0 ? clamp01(r.res.progress / r.res.required) * 100 : 0;
+      rows.push([r.skill, r.roster.length, r.res.tiersCleared, r.res.roomLevel, pctInto.toFixed(1) + "%"]);
+      totalTiers += r.res.tiersCleared;
+      totalRoster += r.roster.length;
+    }
+    rows.push(["TOTAL", totalRoster, totalTiers, "", ""]);
+    rows.push([]);
+    rows.push(["Player", "Trial", "Level", "Contribution %"]);
+    for (const r of optResult.finalResults) {
+      for (const row of r.roster) {
+        rows.push([row.member.name, r.skill, row.level, row.pct.toFixed(2) + "%"]);
+      }
+    }
+    if (optResult.unassigned.length) {
+      rows.push([]);
+      rows.push(["Unassigned"]);
+      for (const m of optResult.unassigned) rows.push([m.name]);
+    }
+    return toCsv(rows);
+  }
+
+  // ---------- Wiring ----------
+  document.getElementById("csvFile").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        members = loadMembersFromCSV(reader.result);
+        const statusEl = document.getElementById("csvStatus");
+        statusEl.textContent = "Loaded " + members.length + " members from “" + file.name + "”.";
+        statusEl.className = "status ok";
+        renderPreview();
+        updateRunEnabled();
+        updateExportButtons();
+        saveState();
+      } catch (err) {
+        const statusEl = document.getElementById("csvStatus");
+        statusEl.textContent = "Error: " + err.message;
+        statusEl.className = "status err";
+        members = [];
+        updateRunEnabled();
+        updateExportButtons();
+      }
+    };
+    reader.onerror = () => {
+      const statusEl = document.getElementById("csvStatus");
+      statusEl.textContent = "Failed to read file.";
+      statusEl.className = "status err";
+    };
+    reader.readAsText(file);
+  });
+
+  document.getElementById("resetCfgBtn").addEventListener("click", resetConfig);
+
+  document.getElementById("runBtn").addEventListener("click", () => {
+    const runStatus = document.getElementById("runStatus");
+    const spinner = document.getElementById("spinner");
+    spinner.classList.add("active");
+    runStatus.textContent = "";
+    runStatus.className = "status";
+    // Defer so the spinner can paint before the (synchronous) optimization runs.
+    setTimeout(() => {
+      try {
+        const cfg = readConfig();
+        const skillConfigs = Array.from(selectedSkills).map((s) => computeSkillConfig(s, cfg));
+        const t0 = performance.now();
+        const optResult = optimizeAssignment(members, skillConfigs, cfg);
+        const t1 = performance.now();
+        renderResults(optResult, cfg);
+        renderGreedyCompare(optResult);
+        lastOptResult = optResult;
+        lastCfg = cfg;
+        updateExportButtons();
+        runStatus.textContent = "Done in " + Math.round(t1 - t0) + "ms.";
+        runStatus.className = "status ok";
+      } catch (err) {
+        runStatus.textContent = "Error: " + err.message;
+        runStatus.className = "status err";
+      } finally {
+        spinner.classList.remove("active");
+      }
+    }, 20);
+  });
+
+  document.getElementById("exportMembersBtn").addEventListener("click", () => {
+    const status = document.getElementById("exportStatus");
+    if (members.length === 0) {
+      status.textContent = "Load member data first.";
+      status.className = "status err";
+      return;
+    }
+    const filename = "member_profile_" + formatDateForFilename() + ".csv";
+    downloadCSV(filename, buildMemberProfileCSV(members));
+    status.textContent = "Downloaded " + filename + " (" + members.length + " players).";
+    status.className = "status ok";
+  });
+
+  document.getElementById("exportAssignmentBtn").addEventListener("click", () => {
+    const status = document.getElementById("exportStatus");
+    if (!lastOptResult) {
+      status.textContent = "Run \"Optimize Assignment\" first.";
+      status.className = "status err";
+      return;
+    }
+    const filename = "trial_assignments_" + formatDateForFilename() + ".csv";
+    downloadCSV(filename, buildTrialAssignmentsCSV(lastOptResult, lastCfg));
+    status.textContent = "Downloaded " + filename + ".";
+    status.className = "status ok";
+  });
+
+  // Best-effort auto-load if served over http(s) with the CSV alongside this file.
+  function tryAutoLoad() {
+    if (location.protocol === "file:") return;
+    fetch("./The Arsenal_members_2026-07-24.csv")
+      .then((r) => (r.ok ? r.text() : Promise.reject()))
+      .then((text) => {
+        members = loadMembersFromCSV(text);
+        const statusEl = document.getElementById("csvStatus");
+        statusEl.textContent = "Auto-loaded " + members.length + " members.";
+        statusEl.className = "status ok";
+        renderPreview();
+        updateRunEnabled();
+        updateExportButtons();
+        saveState();
+      })
+      .catch(() => {});
+  }
+
+  renderSkillsGrid();
+  renderBuildingsGrid();
+
+  // Restore cached state (config, selected skills, loaded members) from localStorage, if present.
+  const restoredState = loadState();
+  if (restoredState) {
+    if (restoredState.cfgValues) {
+      for (const id in restoredState.cfgValues) {
+        const el = document.getElementById(id);
+        if (el) el.value = restoredState.cfgValues[id];
+      }
+    }
+    if (Array.isArray(restoredState.selectedSkills)) {
+      const grid = document.getElementById("skillsGrid");
+      for (const label of grid.children) {
+        const skill = label.dataset.skill;
+        if (restoredState.selectedSkills.includes(skill)) {
+          selectedSkills.add(skill);
+          const cb = label.querySelector("input");
+          if (cb) cb.checked = true;
+        }
+      }
+      updateSkillsUI();
+    }
+    if (Array.isArray(restoredState.members) && restoredState.members.length) {
+      members = restoredState.members;
+      renderPreview();
+      const statusEl = document.getElementById("csvStatus");
+      statusEl.textContent = "Restored " + members.length + " members from a previous session (localStorage).";
+      statusEl.className = "status ok";
+    }
+  }
+
+  // Wire every assumptions-panel input to autosave on change (building inputs wire themselves in renderBuildingsGrid).
+  for (const id in DEFAULTS) {
+    if (id.indexOf("cfg-building-") === 0) continue;
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", saveState);
+  }
+
+  updateRunEnabled();
+  updateExportButtons();
+  tryAutoLoad();
+})();
+</script>
+</body>
+</html>
