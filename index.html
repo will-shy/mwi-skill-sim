@@ -153,6 +153,26 @@
       <input type="file" id="csvFile" accept=".csv">
       <span id="csvStatus" class="status">No file loaded yet.</span>
     </div>
+
+    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);">
+      <p class="note" style="font-size:0.85rem; margin-top:0;">
+        Or import the player grid straight from the Google Sheet, then pick skills and optimize below. To instead
+        simulate the assignment already entered in that sheet (columns A–D), open the
+        <a href="./sheet-sim.html" target="_blank" rel="noopener" style="color:var(--accent);">fixed-assignment simulator ↗</a>
+        — same players, so you can compare the optimizer's plan against the sheet's.
+      </p>
+      <div class="row">
+        <input type="text" id="sheetUrl" placeholder="Google Sheet URL or ID"
+          style="flex:1; min-width:260px; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit;"
+          value="https://docs.google.com/spreadsheets/d/1ZzLi_2NGfV7rw_C8ZXt1_bhcIRlW0uCT80WU-wyRrnw/edit">
+        <input type="text" id="sheetTab" placeholder="Tab name"
+          style="width:150px; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit;"
+          value="Skilling Trials">
+        <button id="importSheetBtn" class="secondary" type="button">Import players from sheet</button>
+      </div>
+      <span id="sheetStatus" class="status"></span>
+    </div>
+
     <details style="margin-top:12px;">
       <summary id="previewSummary">Member preview</summary>
       <div class="preview-scroll">
@@ -437,6 +457,43 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
         levels,
       });
     }
+    return out;
+  }
+
+  // ---------- Google Sheet import (player grid only; optimizer runs as usual) ----------
+  function extractSheetId(urlOrId) {
+    const m = String(urlOrId).match(/\/spreadsheets\/d\/([a-zA-Z0-9\-_]+)/);
+    return m ? m[1] : String(urlOrId).trim();
+  }
+  function gvizCsvUrl(id, tab) {
+    return "https://docs.google.com/spreadsheets/d/" + id + "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(tab);
+  }
+  // Find the row + column where the 10 skills appear consecutively in order, then read every
+  // player row beneath it. Returns the same member shape as loadMembersFromCSV().
+  function loadMembersFromSheetRows(rows) {
+    let headerRow = -1, startCol = -1;
+    for (let r = 0; r < Math.min(rows.length, 15) && headerRow === -1; r++) {
+      const cells = rows[r].map((c) => (c || "").trim());
+      for (let s0 = 0; s0 + SKILLS.length <= cells.length; s0++) {
+        let ok = true;
+        for (let k = 0; k < SKILLS.length; k++) { if (cells[s0 + k] !== SKILLS[k]) { ok = false; break; } }
+        if (ok) { headerRow = r; startCol = s0; break; }
+      }
+    }
+    if (headerRow === -1) throw new Error("Could not find the player grid (a header row listing all 10 skills in order).");
+    const playerCol = startCol - 1;
+    const skillCol = {};
+    SKILLS.forEach((s, i) => { skillCol[s] = startCol + i; });
+    const out = [];
+    for (let r = headerRow + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const name = (row[playerCol] || "").trim();
+      if (!name) continue;
+      const levels = {};
+      for (const s of SKILLS) levels[s] = Number(row[skillCol[s]]) || 0;
+      out.push({ name, role: "", totalLevel: SKILLS.reduce((a, s) => a + levels[s], 0), levels });
+    }
+    if (!out.length) throw new Error("Found the grid header but no player rows beneath it.");
     return out;
   }
 
@@ -1130,6 +1187,37 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
       statusEl.className = "status err";
     };
     reader.readAsText(file);
+  });
+
+  document.getElementById("importSheetBtn").addEventListener("click", async () => {
+    const status = document.getElementById("sheetStatus");
+    const btn = document.getElementById("importSheetBtn");
+    status.className = "status";
+    status.textContent = "Fetching sheet…";
+    btn.disabled = true;
+    try {
+      const id = extractSheetId(document.getElementById("sheetUrl").value);
+      const tab = (document.getElementById("sheetTab").value || "").trim() || "Skilling Trials";
+      if (!id) throw new Error("Enter a Google Sheet URL or ID.");
+      const resp = await fetch(gvizCsvUrl(id, tab));
+      if (!resp.ok) throw new Error("HTTP " + resp.status + " — is the sheet shared as 'Anyone with the link can view' and the tab name correct?");
+      const rows = parseCSV(await resp.text());
+      members = loadMembersFromSheetRows(rows);
+      const csvStatus = document.getElementById("csvStatus");
+      csvStatus.textContent = "Loaded " + members.length + " players from the Google Sheet grid.";
+      csvStatus.className = "status ok";
+      status.textContent = "Imported " + members.length + " players. Pick 4 skills, then Optimize.";
+      status.className = "status ok";
+      renderPreview();
+      updateRunEnabled();
+      updateExportButtons();
+      saveState();
+    } catch (err) {
+      status.textContent = "Error: " + err.message;
+      status.className = "status err";
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   document.getElementById("resetCfgBtn").addEventListener("click", resetConfig);
