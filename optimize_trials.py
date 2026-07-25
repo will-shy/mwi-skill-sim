@@ -29,11 +29,12 @@ import sys
 # ---------------------------------------------------------------------------
 SKILLS = ["Milking", "Foraging", "Woodcutting", "Cheesesmithing", "Crafting",
           "Tailoring", "Cooking", "Brewing", "Alchemy", "Enhancing"]
-GATHERING = {"Milking", "Foraging", "Woodcutting"}
-# The +11.2% efficiency gear bonus (rule 4.3) applies to two separate groups. Kept
-# distinct so each can be tuned independently; Woodcutting is in neither.
-ARTISAN = {"Cheesesmithing", "Crafting", "Tailoring"}
-COOKING_BREWING = {"Cooking", "Brewing"}
+# The +11.2% efficiency gear bonus (rule 4.3) applies to three skill-specific groups, each
+# from its own gear piece (collector's boots / eye watch / red culinary hat). Kept distinct
+# so each can be tuned independently. Alchemy gets none (it has gloves speed instead).
+GATHERING = {"Milking", "Foraging", "Woodcutting"}          # collector's boots (+11.2% eff) + double chance
+ARTISAN = {"Cheesesmithing", "Crafting", "Tailoring"}       # eye watch (+11.2% eff)
+COOKING_BREWING = {"Cooking", "Brewing"}                    # red culinary hat (+11.2% eff)
 GLOVE = {"Alchemy", "Enhancing"}
 ENHANCING = "Enhancing"
 
@@ -80,8 +81,9 @@ class Config:
         self.house_eff_per_level = 0.015
         self.eff_achievement = 0.02
         self.eff_community = 0.168
-        self.eff_artisan_gear = 0.112          # Cheesesmithing, Crafting, Tailoring
-        self.eff_cooking_brewing_gear = 0.112  # Cooking, Brewing
+        self.eff_gathering_gear = 0.112        # collector's boots: Milking, Foraging, Woodcutting
+        self.eff_artisan_gear = 0.112          # eye watch: Cheesesmithing, Crafting, Tailoring
+        self.eff_cooking_brewing_gear = 0.112  # red culinary hat: Cooking, Brewing
         # Speed (rule 4.5)
         self.cape_speed = 0.05
         self.glove_speed = 0.112
@@ -96,6 +98,17 @@ class Config:
         self.base_interval_enh = 8.0
         self.base_interval_other = 10.0
         self.max_roster = 22
+        # Robustness: prefer each trial's last cleared tier to have >= this buffer into the
+        # next tier (so it's not a razor-edge clear that RNG could flip). Secondary preference
+        # ONLY — it must never sacrifice a real tier. The optimizer objective per trial is
+        #   optScore = tiers + frac_weight*frac + robust_weight*min(frac, robust_margin)
+        # where frac is progress into the current (uncleared) tier. Clearing a tier is worth
+        # +1 and always wins iff  frac_weight + robust_weight*robust_margin < 1, which is why
+        # frac_weight is 0.5 (not 1): 0.5 + 4*0.1 = 0.9 < 1. Below the margin each unit of
+        # buffer is worth 4.5x; above it, 0.5x — so slack is pulled to fragile trials first.
+        self.robust_margin = 0.10
+        self.robust_weight = 4.0
+        self.frac_weight = 0.5
         # Missing-data defaults (rule 1.2)
         self.default_tool = "holy"
         self.default_enh = 5
@@ -178,12 +191,14 @@ def player_skill_stats(member, skill, cfg, building_level=0):
     if is_enh:
         efficiency = 0.0
     else:
-        if skill in ARTISAN:
+        if skill in GATHERING:
+            gear_eff = cfg.eff_gathering_gear
+        elif skill in ARTISAN:
             gear_eff = cfg.eff_artisan_gear
         elif skill in COOKING_BREWING:
             gear_eff = cfg.eff_cooking_brewing_gear
         else:
-            gear_eff = 0.0
+            gear_eff = 0.0                     # Alchemy: no efficiency gear
         efficiency = (sk["house"] * cfg.house_eff_per_level
                       + cfg.eff_achievement
                       + cfg.eff_community
@@ -325,7 +340,12 @@ def optimize(members, skills, cfg, building_levels):
     cur_score = [0.0] * T
 
     def score_of(t, roster):
-        return simulate_trial([stats_by_trial[t][i] for i in roster], skills[t], cfg)["continuous_score"]
+        # Optimizer objective = true continuous score (tiers + fraction into current tier)
+        # PLUS a robustness bonus that rewards lifting the last tier's buffer up to the
+        # margin. tiers dominate (weight*margin < 1), so this never trades away a real tier.
+        res = simulate_trial([stats_by_trial[t][i] for i in roster], skills[t], cfg)
+        frac = res["continuous_score"] - res["tiers_cleared"]
+        return res["tiers_cleared"] + cfg.frac_weight * frac + cfg.robust_weight * min(frac, cfg.robust_margin)
 
     def greedy_fill():
         added = False
@@ -442,9 +462,11 @@ def print_report(opt, members, cfg):
         # Progress on the last (failed / partial) tier — the one time ran out on.
         partial = res["tier_log"][-1] if res["tier_log"] and not res["tier_log"][-1]["cleared"] else None
         partial_rate = partial["rate"] if partial else res["last_cleared_rate"]
+        margin_pct = cfg.robust_margin * 100
+        robust = "ROBUST" if frac_pct >= margin_pct - 1e-9 else "FRAGILE"
         print(f"    Failed tier L{res['room_level']}: made {res['progress']:,.0f} / "
               f"{res['required']:,.0f} progress ({frac_pct:.1f}% of the way) "
-              f"at {partial_rate:,.1f} progress/s")
+              f"at {partial_rate:,.1f} progress/s  [{robust}: buffer {frac_pct:.1f}% vs {margin_pct:.0f}% target]")
         print(f"    {'Member':<22}{'CSV':>5}{'Eff':>5}{'Interval':>10}"
               f"{'Success':>9}{'Prog/act':>10}{'Prog/s':>10}{'Share':>8}")
         for c in r["contribs"]:
@@ -478,6 +500,8 @@ def build_json(opt, members, cfg):
                 "required": round(res["required"], 1),
                 "fraction": round(frac, 4),
                 "progress_per_sec": round(partial["rate"] if partial else res["last_cleared_rate"], 2),
+                "robust": frac >= cfg.robust_margin - 1e-9,
+                "robust_margin": cfg.robust_margin,
             },
             "current_tier_progress": round(res["progress"], 1),
             "current_tier_required": round(res["required"], 1),
@@ -516,6 +540,9 @@ def main(argv=None):
                     help="guild building levels, e.g. Milking=1 Cooking=2 (+2 eff level each)")
     ap.add_argument("--max-roster", type=int, default=None, help="max members per trial (default 22)")
     ap.add_argument("--duration", type=float, default=None, help="trial duration seconds (default 3600)")
+    ap.add_argument("--margin", type=float, default=None,
+                    help="robustness buffer target as a percent; prioritize each cleared tier "
+                         "having this much progress into the next tier (default 10; 0 disables)")
     ap.add_argument("--json", metavar="PATH", help="also write results as JSON to PATH")
     args = ap.parse_args(argv)
 
@@ -538,6 +565,8 @@ def main(argv=None):
         cfg.max_roster = args.max_roster
     if args.duration is not None:
         cfg.trial_duration = args.duration
+    if args.margin is not None:
+        cfg.robust_margin = args.margin / 100.0
     buildings = parse_buildings(args.building)
 
     members = load_members(args.csv, cfg)

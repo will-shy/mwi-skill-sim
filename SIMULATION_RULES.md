@@ -13,11 +13,30 @@ Skill groupings used throughout:
 
 | Group | Skills | Matters for |
 | --- | --- | --- |
-| **Gathering** | Milking, Foraging, Woodcutting | Double-progress chance |
-| **Artisan** | Cheesesmithing, Crafting, Tailoring | +11.2% efficiency (gear) |
-| **Cooking/Brewing** | Cooking, Brewing | +11.2% efficiency (gear) |
-| **Glove** | Alchemy, Enhancing | +11.2% speed (gear) |
+| **Gathering** | Milking, Foraging, Woodcutting | Double-progress chance + 11.2% efficiency (boots) |
+| **Artisan** | Cheesesmithing, Crafting, Tailoring | +11.2% efficiency (eye watch) |
+| **Cooking/Brewing** | Cooking, Brewing | +11.2% efficiency (red culinary hat) |
+| **Glove** | Alchemy, Enhancing | +11.2% speed (enchanted gloves) |
 | **Enhancing** | Enhancing | Special case — see below |
+
+### Gear bonuses (global, fixed)
+
+Gear is not read per member from the CSV (only tools and houses are) — these are fixed
+bonuses at the stated enhancement level:
+
+| Gear (enh) | Applies to | Bonus |
+| --- | --- | --- |
+| Cape (+0) | all skills | +5% speed |
+| Necklace of speed (+3) | all skills | +5.2% speed |
+| Enchanted gloves (+5) | Alchemy, Enhancing | +11.2% speed |
+| Collector's boots (+5) | Gathering (Milking, Foraging, Woodcutting) | +11.2% efficiency |
+| Eye watch (+5) | Artisan (Cheesesmithing, Crafting, Tailoring) | +11.2% efficiency |
+| Red culinary hat (+5) | Cooking, Brewing | +11.2% efficiency |
+| Earring (+0) | Gathering | +2% double-progress chance |
+| Ring (+0) | Gathering | +2% double-progress chance |
+
+Alchemy gets no efficiency gear (it has gloves for speed instead); Enhancing uses no
+efficiency at all (its progress is flat — see rule 4.4).
 
 ---
 
@@ -92,13 +111,16 @@ With the community multiplier (rule 4.9) the community part becomes `24%`, so **
 Non-gathering skills: `0`.
 
 ### 4.3 Efficiency (not used by Enhancing)
-`house×1.5%` (rule 1.3.2) + `2%` achievement + `14%` community + `11.2%` gear. The gear
-bonus comes from two separate (independently tunable) groups: **Artisan** (Cheesesmithing,
-Crafting, Tailoring) and **Cooking/Brewing** (Cooking, Brewing). Woodcutting is in neither.
+`house×1.5%` (rule 1.3.2) + `2%` achievement + `14%` community + `11.2%` gear. The 11.2%
+efficiency gear applies to every non-Enhancing skill **except Alchemy**, via three
+independently-tunable, skill-specific pieces: **collector's boots** (gathering — Milking,
+Foraging, Woodcutting), **eye watch** (artisan — Cheesesmithing, Crafting, Tailoring), and
+**red culinary hat** (Cooking, Brewing). Alchemy has no efficiency gear.
 With the community multiplier the community part becomes `16.8%`.
 
 ```
-efficiency = houseLevel × 0.015 + 0.02 + 0.168 + (artisan ? 0.112 : 0)
+efficiency = houseLevel × 0.015 + 0.02 + 0.168 + (hasEfficiencyGear ? 0.112 : 0)
+             # hasEfficiencyGear = gathering | artisan | cooking/brewing  (not Alchemy)
 ```
 
 ### 4.4 Progress per successful action
@@ -152,3 +174,24 @@ The assignment search mirrors `index.html`: greedy marginal-gain fill, then loca
 The score optimized is `tiersCleared + fractional progress into the current tier` (a
 continuous objective so the search has a gradient between integer tier boundaries), with an
 optional roster cap per trial (default 22).
+
+### Robustness preference
+
+A tier cleared right at the 3600 s buzzer (0 % into the next tier) is fragile — RNG variance
+around the expected-value model could flip it to one fewer tier in real play. To prefer
+assignments where each cleared tier has headroom, the optimizer adds a **robustness bonus** to
+each trial's score:
+
+```
+optScore = tiersCleared + fracWeight × frac + robustWeight × min(frac, robustMargin)
+```
+
+where `frac` is the progress into the current (uncleared) tier — i.e. the buffer past the last
+cleared tier. Clearing a whole tier is worth `+1`, and it must always beat merely sitting deep
+in an *uncleared* tier — otherwise the optimizer would perversely avoid clearing to keep a big
+buffer. That requires **`fracWeight + robustWeight × robustMargin < 1`**, which is why
+`fracWeight = 0.5` (not 1), with `robustWeight = 4` and `robustMargin = 10%`:
+`0.5 + 4 × 0.1 = 0.9 < 1`. Below the margin each unit of buffer is worth `4.5×`; above it only
+`0.5×` — so the search pulls otherwise-idle slack toward fragile trials first, **without ever
+giving up a real tier**. Set the margin to 0 to disable. A trial is reported **robust** if its
+buffer ≥ margin, else **fragile**.

@@ -199,9 +199,10 @@
           <div class="cfg-field"><label title="Per house level (house read per-member from CSV)">House / level</label><input type="number" id="cfg-houseEffPerLevel" value="1.5" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label>Achievement bonus</label><input type="number" id="cfg-achievementEff" value="2" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label title="14% baseline x1.2 community">Community buff</label><input type="number" id="cfg-communityEff" value="16.8" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Cheesesmithing, Crafting, Tailoring">Artisan gear</label><input type="number" id="cfg-artisanGear" value="11.2" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Cooking, Brewing">Cooking/Brewing gear</label><input type="number" id="cfg-cookBrewGear" value="11.2" step="0.1"><span class="unit">%</span></div>
-          <div class="note">Artisan gear: Cheesesmithing, Crafting, Tailoring. Cooking/Brewing gear: Cooking, Brewing. (Woodcutting: neither.)</div>
+          <div class="cfg-field"><label title="Collector's boots — Milking, Foraging, Woodcutting">Gathering gear (boots)</label><input type="number" id="cfg-gatheringEffGear" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Eye watch — Cheesesmithing, Crafting, Tailoring">Artisan gear (watch)</label><input type="number" id="cfg-artisanGear" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Red culinary hat — Cooking, Brewing">Cooking/Brewing gear (hat)</label><input type="number" id="cfg-cookBrewGear" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Efficiency gear: boots (gathering), eye watch (artisan), red culinary hat (cooking/brewing). Alchemy has none; Enhancing uses no efficiency.</div>
         </div>
 
         <div class="cfg-group">
@@ -226,6 +227,7 @@
           <div class="cfg-field"><label title="Required progress rises this much per attending member">Required / attendee</label><input type="number" id="cfg-attendancePct" value="1" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label>Trial duration</label><input type="number" id="cfg-trialDuration" value="3600" step="1"><span class="unit">s</span></div>
           <div class="cfg-field"><label>Max roster / trial</label><input type="number" id="cfg-maxRoster" value="22" step="1"><span class="unit"></span></div>
+          <div class="cfg-field"><label title="Prioritize each cleared tier having at least this much buffer into the next tier (robustness). Never sacrifices a real tier. 0 disables.">Robustness buffer</label><input type="number" id="cfg-robustMargin" value="10" step="1"><span class="unit">%</span></div>
         </div>
 
       </div>
@@ -406,6 +408,7 @@
       houseEffPerLevel: pct("cfg-houseEffPerLevel"),
       achievementEff: pct("cfg-achievementEff"),
       communityEff: pct("cfg-communityEff"),
+      gatheringEffGear: pct("cfg-gatheringEffGear"),
       artisanGear: pct("cfg-artisanGear"),
       cookBrewGear: pct("cfg-cookBrewGear"),
       capeSpeed: pct("cfg-capeSpeed"),
@@ -423,6 +426,9 @@
       attendancePct: pct("cfg-attendancePct"),
       trialDuration: num("cfg-trialDuration"),
       maxRoster: num("cfg-maxRoster"),
+      robustMargin: pct("cfg-robustMargin"),
+      robustWeight: 4,   // fixed; keep fracWeight + robustWeight * robustMargin < 1 so a full tier always dominates
+      fracWeight: 0.5,
       buildingLevels: Object.fromEntries(SKILLS.map((s) => [s, num("cfg-building-" + s)])),
     };
   }
@@ -432,11 +438,12 @@
     "cfg-enhToolHoly": 3.6, "cfg-enhToolCelestial": 4.2, "cfg-enhHouseSuccess": 0.05,
     "cfg-achievementDouble": 2, "cfg-communityDouble": 24, "cfg-gatheringGear": 4,
     "cfg-houseEffPerLevel": 1.5, "cfg-achievementEff": 2, "cfg-communityEff": 16.8,
-    "cfg-artisanGear": 11.2, "cfg-cookBrewGear": 11.2,
+    "cfg-gatheringEffGear": 11.2, "cfg-artisanGear": 11.2, "cfg-cookBrewGear": 11.2,
     "cfg-capeSpeed": 5, "cfg-toolHolySpeed": 90, "cfg-toolCelestialSpeed": 105,
     "cfg-gloveSpeed": 11.2, "cfg-neckSpeed": 5.2, "cfg-enhCommunitySpeed": 24, "cfg-enhHouseSpeed": 1,
     "cfg-baseIntervalEnh": 8, "cfg-baseIntervalOther": 10, "cfg-startLevel": 100, "cfg-levelStep": 10,
     "cfg-progressMult": 400, "cfg-attendancePct": 1, "cfg-trialDuration": 3600, "cfg-maxRoster": 22,
+    "cfg-robustMargin": 10,
   };
   for (const s of SKILLS) DEFAULTS["cfg-building-" + s] = 0;
 
@@ -471,9 +478,10 @@
 
     let efficiency = 0;
     if (!isEnh) {
-      let gearEff = 0;
-      if (ARTISAN.has(skill)) gearEff = cfg.artisanGear;
-      else if (COOKING_BREWING.has(skill)) gearEff = cfg.cookBrewGear;
+      let gearEff = 0;                                    // Alchemy: no efficiency gear
+      if (GATHERING.has(skill)) gearEff = cfg.gatheringEffGear;      // collector's boots
+      else if (ARTISAN.has(skill)) gearEff = cfg.artisanGear;       // eye watch
+      else if (COOKING_BREWING.has(skill)) gearEff = cfg.cookBrewGear; // red culinary hat
       efficiency = sk.house * cfg.houseEffPerLevel + cfg.achievementEff + cfg.communityEff + gearEff;
     }
 
@@ -562,7 +570,15 @@
     const currentScore = skills.map(() => 0);
     const unassigned = new Set(members.map((_, i) => i));
     const MAX_ROSTER = cfg.maxRoster;
-    const scoreOf = (t, roster) => simulateTrial(roster.map((i) => statsByTrial[t][i]), skills[t], cfg).continuousScore;
+    // Optimizer objective = true continuous score (tiers + fraction into current tier) PLUS a
+    // robustness bonus rewarding lifting the last tier's buffer up to the margin. tiers dominate
+    // (robustWeight * robustMargin < 1), so this never trades away a real tier.
+    const scoreOf = (t, roster) => {
+      const res = simulateTrial(roster.map((i) => statsByTrial[t][i]), skills[t], cfg);
+      const frac = res.continuousScore - res.tiersCleared;
+      // Clearing (+1) always beats buffer since fracWeight + robustWeight*robustMargin < 1.
+      return res.tiersCleared + cfg.fracWeight * frac + cfg.robustWeight * Math.min(frac, cfg.robustMargin);
+    };
 
     function greedyFill() {
       let addedAny = false;
@@ -830,7 +846,14 @@
       const res = r.res;
       const pctInto = res.required > 0 ? clamp01(res.progress / res.required) * 100 : 0;
 
+      const marginPct = cfg.robustMargin * 100;
+      const robust = res.tiersCleared > 0 && pctInto >= marginPct - 1e-9;
       let badge = '<span class="badge">' + res.tiersCleared + " tiers cleared</span>";
+      if (res.tiersCleared > 0 && marginPct > 0) {
+        badge += robust
+          ? ' <span class="badge" style="background:rgba(31,191,96,0.15); color:var(--good);">robust &middot; ' + pctInto.toFixed(0) + "% buffer</span>"
+          : ' <span class="badge stalled">fragile &middot; ' + pctInto.toFixed(1) + "% &lt; " + marginPct.toFixed(0) + "% buffer</span>";
+      }
       if (res.stalled) badge += ' <span class="badge stalled">stalled &mdash; no forward progress possible</span>';
 
       card.innerHTML =
