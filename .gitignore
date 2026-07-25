@@ -1,0 +1,5 @@
+# Guild member exports (contain roster data; kept local only)
+data/
+
+# macOS
+.DS_Store

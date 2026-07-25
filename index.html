@@ -145,32 +145,15 @@
 <body>
 <div class="wrap">
   <h1>Labyrinth Trial Assignment Optimizer</h1>
-  <p class="sub">Load guild member skill levels, pick 4 trial skills, and auto-assign members across the 4 trials to maximize total cleared tiers.</p>
+  <p class="sub">Load guild member data (skill levels, tools, houses, enhancement), pick 4 trial skills, and auto-assign
+    members across the 4 trials to maximize total cleared tiers. Each member is simulated with their own gear, so
+    they have their own action speed &mdash; see <a href="./SIMULATION_RULES.md" style="color:var(--accent);">SIMULATION_RULES.md</a> for the full model.</p>
 
   <div class="card">
     <h2>1. Load Member Data</h2>
     <div class="row">
       <input type="file" id="csvFile" accept=".csv">
       <span id="csvStatus" class="status">No file loaded yet.</span>
-    </div>
-
-    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);">
-      <p class="note" style="font-size:0.85rem; margin-top:0;">
-        Or import the player grid straight from the Google Sheet, then pick skills and optimize below. To instead
-        simulate the assignment already entered in that sheet (columns A–D), open the
-        <a href="./sheet-sim.html" target="_blank" rel="noopener" style="color:var(--accent);">fixed-assignment simulator ↗</a>
-        — same players, so you can compare the optimizer's plan against the sheet's.
-      </p>
-      <div class="row">
-        <input type="text" id="sheetUrl" placeholder="Google Sheet URL or ID"
-          style="flex:1; min-width:260px; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit;"
-          value="https://docs.google.com/spreadsheets/d/1ZzLi_2NGfV7rw_C8ZXt1_bhcIRlW0uCT80WU-wyRrnw/edit">
-        <input type="text" id="sheetTab" placeholder="Tab name"
-          style="width:150px; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit;"
-          value="Skilling Trials">
-        <button id="importSheetBtn" class="secondary" type="button">Import players from sheet</button>
-      </div>
-      <span id="sheetStatus" class="status"></span>
     </div>
 
     <details style="margin-top:12px;">
@@ -193,46 +176,54 @@
 
         <div class="cfg-group">
           <h3>Success Rate</h3>
-          <div class="cfg-field"><label title="Base chance to succeed on an action before level adjustment">Base success</label><input type="number" id="cfg-baseSuccess" value="80" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Multiplicative bonus per level the member is ABOVE the current room level">Bonus / level above</label><input type="number" id="cfg-bonusAbove" value="0.5" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Multiplicative penalty per level the member is BELOW the current room level">Penalty / level below</label><input type="number" id="cfg-penaltyBelow" value="1" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Success rate never drops below this, no matter how far below the room level a member is">Minimum success rate</label><input type="number" id="cfg-minSuccess" value="5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Base chance to succeed before level adjustment">Base success</label><input type="number" id="cfg-baseSuccess" value="80" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Bonus per level ABOVE the room level">Bonus / level above</label><input type="number" id="cfg-bonusAbove" value="0.5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Penalty per level BELOW the room level">Penalty / level below</label><input type="number" id="cfg-penaltyBelow" value="1" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label>Minimum success rate</label><input type="number" id="cfg-minSuccess" value="5" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Enhancing holy tool success bonus at +0">Enh. holy tool</label><input type="number" id="cfg-enhToolHoly" value="3.6" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Enhancing celestial tool success bonus at +0">Enh. celestial tool</label><input type="number" id="cfg-enhToolCelestial" value="4.2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Enhancing house success per level">Enh. house / level</label><input type="number" id="cfg-enhHouseSuccess" value="0.05" step="0.01"><span class="unit">%</span></div>
+          <div class="note">Tool + house success bonuses apply to Enhancing only.</div>
         </div>
 
         <div class="cfg-group">
           <h3>Double Progress (gathering only)</h3>
           <div class="cfg-field"><label>Achievement bonus</label><input type="number" id="cfg-achievementDouble" value="2" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label>Community buff</label><input type="number" id="cfg-communityDouble" value="27" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Two Earrings of Gathering, 2% each">Earrings of Gathering (x2)</label><input type="number" id="cfg-gatheringEarrings" value="4" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="20% baseline x1.2 community">Community buff</label><input type="number" id="cfg-communityDouble" value="24" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="2% earring + 2% ring">Gear (earring + ring)</label><input type="number" id="cfg-gatheringGear" value="4" step="0.1"><span class="unit">%</span></div>
           <div class="note">Applies only to Milking, Foraging, Woodcutting.</div>
         </div>
 
         <div class="cfg-group">
-          <h3>Efficiency</h3>
-          <div class="cfg-field"><label>House level</label><input type="number" id="cfg-houseLevel" value="3" step="1"><span class="unit"></span></div>
-          <div class="cfg-field"><label>House bonus / level</label><input type="number" id="cfg-houseEffPerLevel" value="1.5" step="0.1"><span class="unit">%</span></div>
+          <h3>Efficiency (not Enhancing)</h3>
+          <div class="cfg-field"><label title="Per house level (house read per-member from CSV)">House / level</label><input type="number" id="cfg-houseEffPerLevel" value="1.5" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label>Achievement bonus</label><input type="number" id="cfg-achievementEff" value="2" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label>Community buff</label><input type="number" id="cfg-communityEff" value="15.5" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Extra gear/buff bonus, artisan skills only">Artisan bonus</label><input type="number" id="cfg-extraEff" value="11.2" step="0.1"><span class="unit">%</span></div>
-          <div class="note">Artisan bonus applies only to Woodcutting, Cheesesmithing, Crafting, Tailoring, Cooking, Brewing.</div>
+          <div class="cfg-field"><label title="14% baseline x1.2 community">Community buff</label><input type="number" id="cfg-communityEff" value="16.8" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Cheesesmithing, Crafting, Tailoring">Artisan gear</label><input type="number" id="cfg-artisanGear" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Cooking, Brewing">Cooking/Brewing gear</label><input type="number" id="cfg-cookBrewGear" value="11.2" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Artisan gear: Cheesesmithing, Crafting, Tailoring. Cooking/Brewing gear: Cooking, Brewing. (Woodcutting: neither.)</div>
         </div>
 
         <div class="cfg-group">
           <h3>Speed</h3>
           <div class="cfg-field"><label>Cape</label><input type="number" id="cfg-capeSpeed" value="5" step="0.1"><span class="unit">%</span></div>
-          <div class="cfg-field"><label title="Tools slot, enhancement +5">Tools</label><input type="number" id="cfg-otherSpeed" value="101" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Non-Enhancing holy tool speed at +0">Holy tool</label><input type="number" id="cfg-toolHolySpeed" value="90" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Non-Enhancing celestial tool speed at +0">Celestial tool</label><input type="number" id="cfg-toolCelestialSpeed" value="105" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label title="Alchemy / Enhancing only">Glove</label><input type="number" id="cfg-gloveSpeed" value="11.2" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label>Necklace</label><input type="number" id="cfg-neckSpeed" value="5.2" step="0.1"><span class="unit">%</span></div>
-          <div class="note">Glove bonus applies only to Alchemy and Enhancing.</div>
+          <div class="cfg-field"><label title="20% baseline x1.2, Enhancing only">Enh. community</label><input type="number" id="cfg-enhCommunitySpeed" value="24" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Enhancing house speed per level">Enh. house / level</label><input type="number" id="cfg-enhHouseSpeed" value="1" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Tool speed is scaled by enhancement level. Enhancing tool gives success, not speed.</div>
         </div>
 
         <div class="cfg-group">
           <h3>Trial Structure</h3>
-          <div class="cfg-field"><label>Base interval</label><input type="number" id="cfg-baseInterval" value="10" step="0.1"><span class="unit">s</span></div>
+          <div class="cfg-field"><label>Base interval (Enhancing)</label><input type="number" id="cfg-baseIntervalEnh" value="8" step="0.1"><span class="unit">s</span></div>
+          <div class="cfg-field"><label>Base interval (other)</label><input type="number" id="cfg-baseIntervalOther" value="10" step="0.1"><span class="unit">s</span></div>
           <div class="cfg-field"><label>Starting level</label><input type="number" id="cfg-startLevel" value="100" step="1"><span class="unit"></span></div>
           <div class="cfg-field"><label>Level step / tier</label><input type="number" id="cfg-levelStep" value="10" step="1"><span class="unit"></span></div>
           <div class="cfg-field"><label>Progress multiplier</label><input type="number" id="cfg-progressMult" value="400" step="1"><span class="unit">&times;lvl</span></div>
-          <div class="cfg-field"><label title="Required progress per tier scales up by this much for every attending member in the roster">Required progress / attendee</label><input type="number" id="cfg-attendancePct" value="1" step="0.1"><span class="unit">%</span></div>
+          <div class="cfg-field"><label title="Required progress rises this much per attending member">Required / attendee</label><input type="number" id="cfg-attendancePct" value="1" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label>Trial duration</label><input type="number" id="cfg-trialDuration" value="3600" step="1"><span class="unit">s</span></div>
           <div class="cfg-field"><label>Max roster / trial</label><input type="number" id="cfg-maxRoster" value="22" step="1"><span class="unit"></span></div>
         </div>
@@ -242,10 +233,11 @@
         <button class="secondary" id="resetCfgBtn" type="button">Reset to defaults</button>
       </div>
       <p class="note">
-        interval = base interval / (1 + speed) &middot; progress-per-success = floor(level &times; (1 + efficiency)) &middot;
-        success rate = max(minimum, clamp01(base &times; (1 + levelBonus))) &middot; required progress per tier = multiplier &times; room level &times; (1 + 1% &times; roster size).
-        Simulation uses expected-value accumulation (deterministic approximation of the per-action success/double rolls), which is accurate for
-        rosters of this size run over many actions &mdash; actual live results will vary slightly around this estimate.
+        Each member is simulated with their own gear, so they have their own interval and expected progress rate:
+        <code>rate = successRate &times; (1 + doubleChance) &times; progressPerAction / interval</code>. A tier's time is
+        <code>requiredWork / &Sigma;rate</code>; required work per tier = <code>multiplier &times; roomLevel &times; (1 + 1% &times; roster)</code>.
+        Success rate is recomputed each tier as the room level changes. This is a deterministic expected-value model &mdash;
+        real play varies slightly around it.
       </p>
     </details>
   </div>
@@ -253,9 +245,8 @@
   <div class="card">
     <h2>4. Guild Buildings</h2>
     <p class="note" style="font-size:0.85rem;">
-      Each guild building level adds a flat <strong>+2 levels</strong> to every member's effective level in that
-      skill for the trial (on top of their own CSV level) &mdash; this affects both their success rate and their
-      progress per success. Default 0 (no building).
+      Each guild building level adds a flat <strong>+2 effective levels</strong> to every member in that skill for the
+      trial (on top of their CSV level) &mdash; affecting both success rate and progress. Default 0.
     </p>
     <div class="skills-grid" id="buildingsGrid"></div>
   </div>
@@ -289,116 +280,35 @@
     <div class="results-grid" id="resultsGrid"></div>
   </div>
 
-  <div class="card" id="algorithmSection">
-    <h2>How this works</h2>
-
-    <details open>
-      <summary>Simulating one trial</summary>
-      <p class="note" style="font-size:0.85rem; margin-top:10px;">
-        Everyone assigned to a trial shares the same skill, so they share the same interval and tick in lockstep.
-        That means within one tier (a fixed room level), each member's <em>expected</em> contribution per tick is
-        constant — no need to roll dice tick by tick:
-      </p>
-      <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:0.8rem; overflow-x:auto; white-space:pre-wrap;">workPower       = floor(level &times; (1 + efficiency))
-perMemberTick   = successRate(level, roomLevel) &times; (1 + doubleChance) &times; workPower
-successRate     = max(minSuccess, clamp01(baseSuccess &times; (1 + levelBonus)))
-levelBonus      = (level &minus; roomLevel) &times; bonusAbove   if level &ge; roomLevel
-                  (level &minus; roomLevel) &times; penaltyBelow if level &lt; roomLevel
-tier HP         = progressMult &times; roomLevel &times; (1 + attendancePct &times; rosterSize)
-ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roster))</pre>
-      <p class="note" style="font-size:0.85rem;">
-        Instead of looping tick-by-tick, each tier is solved directly for how many ticks it needs, so simulating
-        a full 3600s trial costs roughly one division per tier (a few dozen), not one per tick (hundreds). This
-        is a deterministic expected-value approximation — real play has RNG variance around it — but with up to
-        22 concurrent actors over many actions it stays tight, and it's what makes evaluating thousands of
-        candidate rosters during optimization fast enough to be interactive.
-      </p>
-    </details>
-
-    <details style="margin-top:12px;">
-      <summary>Why members can be worth benching (the attendance tax)</summary>
-      <p class="note" style="font-size:0.85rem; margin-top:10px;">
-        Tier HP scales with roster size (<code>1 + attendancePct &times; rosterSize</code>), and that cost is
-        <strong>flat per attendee</strong> — independent of how strong the joining member is — while their
-        <em>benefit</em> (their own contribution rate) scales with their own level. Roughly, adding a member is
-        only worth it if their own contribution is more than about <code>attendancePct</code> of the team's
-        existing total throughput. On the real roster this rarely bites at the default 1% (nearly everyone clears
-        that bar), but it becomes a real trade-off at higher attendance costs: testing at 30% attendance benched
-        6&ndash;7 of the guild's lowest-level members for these skills, because their attendance tax outweighed
-        their contribution once success rate and roster share were both accounted for. That's why the optimizer
-        includes a prune move (drop a member if the trial scores higher without them), on top of adding and
-        swapping.
-      </p>
-    </details>
-
-    <details style="margin-top:12px;">
-      <summary>Assigning members across trials (greedy + local search)</summary>
-      <p class="note" style="font-size:0.85rem; margin-top:10px;">
-        Assigning up to 86 members across 4 trials (&le;22 each) to maximize total tiers cleared is a partition
-        problem with a roster-size-penalized, diminishing-returns objective — not something worth an exact solver
-        for a planning tool this size. Three local-search moves, run in rounds until nothing improves:
-      </p>
-      <ul class="note" style="font-size:0.85rem;">
-        <li><strong>Greedy fill</strong> &mdash; repeatedly assigns whichever (member, trial) pair gives the
-          single largest score gain, and only accepts moves with a strictly positive gain (it won't force-fill a
-          trial with someone who'd hurt it).</li>
-        <li><strong>Prune</strong> &mdash; for each trial, drops any member whose removal would raise that
-          trial's score.</li>
-        <li><strong>Swap</strong> &mdash; for every pair of trials, swaps two members across them if it improves
-          the combined score.</li>
-      </ul>
-      <p class="note" style="font-size:0.85rem;">
-        The score being optimized is <code>tiersCleared + fractional progress into the current tier</code> (not
-        raw tier count), since raw integer tiers give the search no gradient to climb between tier boundaries.
-        One consequence: prune/swap can raise this continuous score while occasionally landing on one fewer
-        <em>integer</em> tier than plain greedy fill — the two metrics aren't quite the same thing, and a small
-        continuous improvement can trade a completed tier for more progress spread across the other trials.
-      </p>
-    </details>
-
-    <details style="margin-top:12px;" open>
-      <summary>Greedy fill alone vs. after prune/swap &mdash; live, for your current data</summary>
-      <div id="greedyCompareContent" style="margin-top:10px;">
-        <p class="note" style="font-size:0.85rem;">Run "Optimize Assignment" above to see this comparison for your loaded roster and selected skills.</p>
-      </div>
-    </details>
-
-    <details style="margin-top:12px;">
-      <summary>How close is this to the true optimum? (benchmarked against exact search)</summary>
-      <p class="note" style="font-size:0.85rem; margin-top:10px;">
-        The real 86-member problem can't be solved exactly — assigning each member to one of 4 trials or leaving
-        them out is <code>5<sup>86</sup></code> possibilities (&asymp;10<sup>60</sup>) by brute force, or
-        <code>3<sup>86</sup></code> (&asymp;10<sup>41</sup>) with the smartest known exact technique (dynamic
-        programming over subsets) &mdash; both far beyond any computer, which is exactly why this uses a
-        heuristic instead of an exact solver.
-      </p>
-      <p class="note" style="font-size:0.85rem;">
-        As a sanity check, the same DP was run to true optimality on a reduced 14-member slice of the real roster
-        (small enough to be exact: <code>3<sup>14</sup> &asymp; 4.8M</code> states). Result: DP-optimal scored
-        20.8152 (continuous) in 8.5s; this page's heuristic scored 20.8135 in 4.8ms &mdash; about
-        <strong>0.01% off the true optimum, roughly 1,760&times; faster</strong> (and it happened to land on 19
-        cleared tiers vs. the DP's 18, illustrating the continuous-vs-integer-tier point above). That gap is
-        expected to stay small at the full 86-member scale too, though it can't be proven exactly since nothing
-        can solve that instance exactly.
-      </p>
-    </details>
-  </div>
-
 </div>
 
 <script>
 (function () {
   "use strict";
 
-  // ---------- Skill metadata ----------
+  // ---------- Skill metadata (see SIMULATION_RULES.md) ----------
   const SKILLS = ["Milking","Foraging","Woodcutting","Cheesesmithing","Crafting","Tailoring","Cooking","Brewing","Alchemy","Enhancing"];
   const GATHERING = new Set(["Milking","Foraging","Woodcutting"]);
-  const ARTISAN = new Set(["Woodcutting","Cheesesmithing","Crafting","Tailoring","Cooking","Brewing"]);
-  const GLOVE_SKILLS = new Set(["Alchemy","Enhancing"]);
+  const ARTISAN = new Set(["Cheesesmithing","Crafting","Tailoring"]);        // +11.2% efficiency gear
+  const COOKING_BREWING = new Set(["Cooking","Brewing"]);                    // +11.2% efficiency gear (separate group)
+  const GLOVE = new Set(["Alchemy","Enhancing"]);                           // +11.2% speed gear
+  const ENH = "Enhancing";
 
-  let members = []; // {name, role, totalLevel, levels:{skill:number}}
+  // Rule 1.4.3 — enhancement bonus as a fraction of base stat, indexed by enhancement level.
+  const ENH_TABLE = {0:0,1:0.020,2:0.042,3:0.066,4:0.092,5:0.120,6:0.150,7:0.182,8:0.216,9:0.252,
+    10:0.290,11:0.334,12:0.384,13:0.440,14:0.502,15:0.570,16:0.644,17:0.724,18:0.810,19:0.902,20:1.000};
+  function enhFactor(level) {
+    if (level <= 0) return 1.0;
+    if (ENH_TABLE[level] != null) return 1.0 + ENH_TABLE[level];
+    return 1.0 + ENH_TABLE[20];
+  }
+
+  // Missing-data defaults (rule 1.2)
+  const DEFAULT_TOOL = "holy", DEFAULT_ENH = 5, DEFAULT_HOUSE = 3;
+
+  let members = []; // {name, role, totalLevel, skills:{skill:{level,tool,enh,house}}}
   let selectedSkills = new Set();
-  let lastOptResult = null; // most recent optimizeAssignment() result, for CSV export
+  let lastOptResult = null;
   let lastCfg = null;
 
   // ---------- CSV parsing ----------
@@ -429,6 +339,13 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     return rows.filter((r) => r.length > 1 || (r.length === 1 && r[0] !== ""));
   }
 
+  function toInt(val, dflt) {
+    const s = (val == null ? "" : String(val)).trim();
+    if (s === "") return dflt;
+    const n = Number(s);
+    return Number.isFinite(n) ? Math.trunc(n) : dflt;
+  }
+
   function loadMembersFromCSV(text) {
     const rows = parseCSV(text);
     if (rows.length < 2) throw new Error("CSV has no data rows.");
@@ -436,64 +353,37 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     const idx = {};
     header.forEach((h, i) => { idx[h] = i; });
     const missingSkills = SKILLS.filter((s) => !(s in idx));
-    if (missingSkills.length) {
-      throw new Error("CSV missing skill columns: " + missingSkills.join(", "));
-    }
+    if (missingSkills.length) throw new Error("CSV missing skill columns: " + missingSkills.join(", "));
     const nameIdx = idx["Name"];
+    if (nameIdx === undefined) throw new Error('CSV missing "Name" column.');
     const roleIdx = idx["Role"];
     const totalIdx = idx["Total Level"];
-    if (nameIdx === undefined) throw new Error('CSV missing "Name" column.');
 
     const out = [];
     for (let r = 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.every((v) => v === "")) continue;
-      const levels = {};
-      for (const s of SKILLS) levels[s] = Number(row[idx[s]]) || 0;
+      const name = (row[nameIdx] || "").trim();
+      if (!name) continue;
+      const skills = {};
+      for (const s of SKILLS) {
+        let tool = (row[idx[s + " Tool"]] || "").trim().toLowerCase();
+        if (tool !== "holy" && tool !== "celestial") tool = DEFAULT_TOOL;
+        skills[s] = {
+          level: toInt(row[idx[s]], 0),
+          tool,
+          enh: toInt(row[idx[s + " Tool Enh"]], DEFAULT_ENH),
+          house: toInt(row[idx[s + " House"]], DEFAULT_HOUSE),
+        };
+      }
       out.push({
-        name: row[nameIdx] || ("Member " + r),
+        name,
         role: roleIdx !== undefined ? row[roleIdx] : "",
-        totalLevel: totalIdx !== undefined ? Number(row[totalIdx]) || 0 : 0,
-        levels,
+        totalLevel: totalIdx !== undefined ? (Number(row[totalIdx]) || 0) : SKILLS.reduce((a, s) => a + skills[s].level, 0),
+        skills,
       });
     }
-    return out;
-  }
-
-  // ---------- Google Sheet import (player grid only; optimizer runs as usual) ----------
-  function extractSheetId(urlOrId) {
-    const m = String(urlOrId).match(/\/spreadsheets\/d\/([a-zA-Z0-9\-_]+)/);
-    return m ? m[1] : String(urlOrId).trim();
-  }
-  function gvizCsvUrl(id, tab) {
-    return "https://docs.google.com/spreadsheets/d/" + id + "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(tab);
-  }
-  // Find the row + column where the 10 skills appear consecutively in order, then read every
-  // player row beneath it. Returns the same member shape as loadMembersFromCSV().
-  function loadMembersFromSheetRows(rows) {
-    let headerRow = -1, startCol = -1;
-    for (let r = 0; r < Math.min(rows.length, 15) && headerRow === -1; r++) {
-      const cells = rows[r].map((c) => (c || "").trim());
-      for (let s0 = 0; s0 + SKILLS.length <= cells.length; s0++) {
-        let ok = true;
-        for (let k = 0; k < SKILLS.length; k++) { if (cells[s0 + k] !== SKILLS[k]) { ok = false; break; } }
-        if (ok) { headerRow = r; startCol = s0; break; }
-      }
-    }
-    if (headerRow === -1) throw new Error("Could not find the player grid (a header row listing all 10 skills in order).");
-    const playerCol = startCol - 1;
-    const skillCol = {};
-    SKILLS.forEach((s, i) => { skillCol[s] = startCol + i; });
-    const out = [];
-    for (let r = headerRow + 1; r < rows.length; r++) {
-      const row = rows[r] || [];
-      const name = (row[playerCol] || "").trim();
-      if (!name) continue;
-      const levels = {};
-      for (const s of SKILLS) levels[s] = Number(row[skillCol[s]]) || 0;
-      out.push({ name, role: "", totalLevel: SKILLS.reduce((a, s) => a + levels[s], 0), levels });
-    }
-    if (!out.length) throw new Error("Found the grid header but no player rows beneath it.");
+    if (!out.length) throw new Error("No member rows found in CSV.");
     return out;
   }
 
@@ -507,19 +397,26 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
       bonusAbove: pct("cfg-bonusAbove"),
       penaltyBelow: pct("cfg-penaltyBelow"),
       minSuccess: pct("cfg-minSuccess"),
+      enhToolHoly: pct("cfg-enhToolHoly"),
+      enhToolCelestial: pct("cfg-enhToolCelestial"),
+      enhHouseSuccess: pct("cfg-enhHouseSuccess"),
       achievementDouble: pct("cfg-achievementDouble"),
       communityDouble: pct("cfg-communityDouble"),
-      gatheringEarrings: pct("cfg-gatheringEarrings"),
-      houseLevel: num("cfg-houseLevel"),
+      gatheringGear: pct("cfg-gatheringGear"),
       houseEffPerLevel: pct("cfg-houseEffPerLevel"),
       achievementEff: pct("cfg-achievementEff"),
       communityEff: pct("cfg-communityEff"),
-      extraEff: pct("cfg-extraEff"),
+      artisanGear: pct("cfg-artisanGear"),
+      cookBrewGear: pct("cfg-cookBrewGear"),
       capeSpeed: pct("cfg-capeSpeed"),
-      otherSpeed: pct("cfg-otherSpeed"),
+      toolHolySpeed: pct("cfg-toolHolySpeed"),
+      toolCelestialSpeed: pct("cfg-toolCelestialSpeed"),
       gloveSpeed: pct("cfg-gloveSpeed"),
       neckSpeed: pct("cfg-neckSpeed"),
-      baseInterval: num("cfg-baseInterval"),
+      enhCommunitySpeed: pct("cfg-enhCommunitySpeed"),
+      enhHouseSpeed: pct("cfg-enhHouseSpeed"),
+      baseIntervalEnh: num("cfg-baseIntervalEnh"),
+      baseIntervalOther: num("cfg-baseIntervalOther"),
       startLevel: num("cfg-startLevel"),
       levelStep: num("cfg-levelStep"),
       progressMult: num("cfg-progressMult"),
@@ -532,11 +429,14 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
 
   const DEFAULTS = {
     "cfg-baseSuccess": 80, "cfg-bonusAbove": 0.5, "cfg-penaltyBelow": 1, "cfg-minSuccess": 5,
-    "cfg-achievementDouble": 2, "cfg-communityDouble": 27, "cfg-gatheringEarrings": 4,
-    "cfg-houseLevel": 3, "cfg-houseEffPerLevel": 1.5, "cfg-achievementEff": 2, "cfg-communityEff": 15.5, "cfg-extraEff": 11.2,
-    "cfg-capeSpeed": 5, "cfg-otherSpeed": 101, "cfg-gloveSpeed": 11.2, "cfg-neckSpeed": 5.2,
-    "cfg-baseInterval": 10, "cfg-startLevel": 100, "cfg-levelStep": 10, "cfg-progressMult": 400,
-    "cfg-attendancePct": 1, "cfg-trialDuration": 3600, "cfg-maxRoster": 22,
+    "cfg-enhToolHoly": 3.6, "cfg-enhToolCelestial": 4.2, "cfg-enhHouseSuccess": 0.05,
+    "cfg-achievementDouble": 2, "cfg-communityDouble": 24, "cfg-gatheringGear": 4,
+    "cfg-houseEffPerLevel": 1.5, "cfg-achievementEff": 2, "cfg-communityEff": 16.8,
+    "cfg-artisanGear": 11.2, "cfg-cookBrewGear": 11.2,
+    "cfg-capeSpeed": 5, "cfg-toolHolySpeed": 90, "cfg-toolCelestialSpeed": 105,
+    "cfg-gloveSpeed": 11.2, "cfg-neckSpeed": 5.2, "cfg-enhCommunitySpeed": 24, "cfg-enhHouseSpeed": 1,
+    "cfg-baseIntervalEnh": 8, "cfg-baseIntervalOther": 10, "cfg-startLevel": 100, "cfg-levelStep": 10,
+    "cfg-progressMult": 400, "cfg-attendancePct": 1, "cfg-trialDuration": 3600, "cfg-maxRoster": 22,
   };
   for (const s of SKILLS) DEFAULTS["cfg-building-" + s] = 0;
 
@@ -545,130 +445,124 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     saveState();
   }
 
-  // ---------- Persistence (localStorage) ----------
-  const STORAGE_KEY = "trialsOptimizerState_v1";
-
+  // ---------- Persistence ----------
+  const STORAGE_KEY = "trialsOptimizerState_v2";
   function saveState() {
     try {
       const cfgValues = {};
-      for (const id in DEFAULTS) {
-        const el = document.getElementById(id);
-        if (el) cfgValues[id] = el.value;
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        cfgValues,
-        selectedSkills: Array.from(selectedSkills),
-        members,
-      }));
-    } catch (e) {
-      // ignore storage errors (quota, privacy mode, etc.)
-    }
+      for (const id in DEFAULTS) { const el = document.getElementById(id); if (el) cfgValues[id] = el.value; }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ cfgValues, selectedSkills: Array.from(selectedSkills), members }));
+    } catch (e) { /* ignore */ }
   }
-
   function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function computeSkillConfig(skill, cfg) {
-    const efficiency = cfg.houseLevel * cfg.houseEffPerLevel + cfg.achievementEff + cfg.communityEff + (ARTISAN.has(skill) ? cfg.extraEff : 0);
-    const doubleChance = clamp01(GATHERING.has(skill) ? (cfg.achievementDouble + cfg.communityDouble + cfg.gatheringEarrings) : 0);
-    const speed = cfg.capeSpeed + cfg.otherSpeed + (GLOVE_SKILLS.has(skill) ? cfg.gloveSpeed : 0) + cfg.neckSpeed;
-    const interval = cfg.baseInterval / (1 + speed);
-    return { skill, efficiency, doubleChance, speed, interval };
+    try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
+    catch (e) { return null; }
   }
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
-  function successRate(level, roomLevel, cfg) {
-    const delta = level - roomLevel;
-    const bonus = delta >= 0 ? delta * cfg.bonusAbove : delta * cfg.penaltyBelow;
-    return Math.max(cfg.minSuccess, clamp01(cfg.baseSuccess * (1 + bonus)));
+  // ---------- Per-member per-skill stats (rules 1.3, 1.4, 4.2-4.6) ----------
+  // Everything that does NOT depend on room level. rate at a room level = rateFactor * successRate.
+  function playerSkillStats(member, skill, cfg, buildingLevel) {
+    const sk = member.skills[skill];
+    const effLevel = sk.level + 2 * (buildingLevel || 0);   // rule 4.10
+    const isEnh = skill === ENH;
+    const ef = enhFactor(sk.enh);
+
+    let efficiency = 0;
+    if (!isEnh) {
+      let gearEff = 0;
+      if (ARTISAN.has(skill)) gearEff = cfg.artisanGear;
+      else if (COOKING_BREWING.has(skill)) gearEff = cfg.cookBrewGear;
+      efficiency = sk.house * cfg.houseEffPerLevel + cfg.achievementEff + cfg.communityEff + gearEff;
+    }
+
+    const progPerAction = isEnh
+      ? Math.max(0, effLevel)
+      : Math.max(0, Math.floor(effLevel * (1 + efficiency)));
+
+    const doubleChance = GATHERING.has(skill)
+      ? clamp01(cfg.achievementDouble + cfg.communityDouble + cfg.gatheringGear) : 0;
+    const doubleMult = 1 + doubleChance;
+
+    let speed, enhSuccessBonus = 0, baseInterval;
+    if (isEnh) {
+      const baseTool = sk.tool === "holy" ? cfg.enhToolHoly : cfg.enhToolCelestial;
+      enhSuccessBonus = baseTool * ef + sk.house * cfg.enhHouseSuccess;   // rule 1.4.1, 1.3.1
+      speed = cfg.capeSpeed + cfg.gloveSpeed + cfg.neckSpeed + cfg.enhCommunitySpeed + sk.house * cfg.enhHouseSpeed;
+      baseInterval = cfg.baseIntervalEnh;
+    } else {
+      const baseSpeed = sk.tool === "holy" ? cfg.toolHolySpeed : cfg.toolCelestialSpeed;
+      const toolSpeed = baseSpeed * ef;                                  // rule 1.4.2 x 1.4.3
+      speed = cfg.capeSpeed + toolSpeed + cfg.neckSpeed + (GLOVE.has(skill) ? cfg.gloveSpeed : 0);
+      baseInterval = cfg.baseIntervalOther;
+    }
+    const interval = baseInterval / (1 + speed);
+    const rateFactor = doubleMult * progPerAction / interval;
+
+    return { effLevel, efficiency, interval, speed, progPerAction, doubleChance, enhSuccessBonus, rateFactor };
   }
 
-  // ---------- Core simulation (deterministic expected-value model) ----------
-  // idxList: indices into levelsArray for members currently assigned to this trial.
-  function simulateTrial(idxList, levelsArray, skillCfg, cfg) {
-    const n = idxList.length;
+  function successRate(stats, roomLevel, cfg, isEnh) {
+    const delta = stats.effLevel - roomLevel;
+    const bonus = delta >= 0 ? delta * cfg.bonusAbove : delta * cfg.penaltyBelow;
+    let sr = cfg.baseSuccess * (1 + bonus);
+    if (isEnh) sr += stats.enhSuccessBonus;
+    return Math.max(cfg.minSuccess, clamp01(sr));
+  }
+
+  // ---------- Core simulation (expected-value rate accumulation) ----------
+  function simulateTrial(rosterStats, skill, cfg) {
+    const n = rosterStats.length;
+    const isEnh = skill === ENH;
     if (n === 0) {
-      const required0 = cfg.progressMult * cfg.startLevel;
-      return { tiersCleared: 0, roomLevel: cfg.startLevel, progress: 0, required: required0, timeUsed: 0, contributions: [], stalled: false, continuousScore: 0, tierLog: [] };
+      const req0 = cfg.progressMult * cfg.startLevel;
+      return { tiersCleared: 0, roomLevel: cfg.startLevel, progress: 0, required: req0, continuousScore: 0, lastClearedRate: 0, tierLog: [], stalled: false };
     }
-    const progressPerAction = idxList.map((i) => Math.max(0, Math.floor(levelsArray[i] * (1 + skillCfg.efficiency))));
-    let roomLevel = cfg.startLevel;
-    let progress = 0;
-    let timeUsed = 0;
-    let tiersCleared = 0;
-    let stalled = false;
-    const contributions = new Array(n).fill(0);
-    const doubleMult = 1 + skillCfg.doubleChance;
-    const rosterMult = 1 + cfg.attendancePct * n; // required progress rises with attendance
-    const tierLog = []; // per-tier breakdown: { level, ticks, timeSpent, cleared }
+    const rosterMult = 1 + cfg.attendancePct * n;
+    let room = cfg.startLevel, timeUsed = 0, tiers = 0, lastClearedRate = 0, stalled = false;
+    const tierLog = [];
 
     while (timeUsed < cfg.trialDuration - 1e-9) {
-      const required = cfg.progressMult * roomLevel * rosterMult;
-      const remaining = required - progress;
-      const perMemberTick = new Array(n);
-      let perTickTotal = 0;
-      for (let k = 0; k < n; k++) {
-        const sr = successRate(levelsArray[idxList[k]], roomLevel, cfg);
-        const val = sr * doubleMult * progressPerAction[k];
-        perMemberTick[k] = val;
-        perTickTotal += val;
-      }
-      if (perTickTotal <= 1e-9) {
+      const required = cfg.progressMult * room * rosterMult;
+      let totalRate = 0;
+      for (const st of rosterStats) totalRate += st.rateFactor * successRate(st, room, cfg, isEnh);
+      if (totalRate <= 1e-12) {
         stalled = true;
-        tierLog.push({ level: roomLevel, hp: required, hpFilled: progress, ticks: 0, timeSpent: 0, cleared: false });
+        tierLog.push({ level: room, hp: required, rate: 0, time: 0, cleared: false, progress: 0 });
         break;
       }
-
-      const ticksNeeded = Math.ceil(remaining / perTickTotal - 1e-9);
-      const timeForTier = ticksNeeded * skillCfg.interval;
-
+      const timeForTier = required / totalRate;
       if (timeUsed + timeForTier <= cfg.trialDuration + 1e-9) {
-        for (let k = 0; k < n; k++) contributions[k] += perMemberTick[k] * ticksNeeded;
-        progress = progress + perTickTotal * ticksNeeded - required; // overflow carries into next tier
         timeUsed += timeForTier;
-        tiersCleared += 1;
-        tierLog.push({ level: roomLevel, hp: required, hpFilled: required, ticks: ticksNeeded, timeSpent: timeForTier, cleared: true });
-        roomLevel += cfg.levelStep;
+        tiers += 1;
+        lastClearedRate = totalRate;
+        tierLog.push({ level: room, hp: required, rate: totalRate, time: timeForTier, cleared: true, progress: required });
+        room += cfg.levelStep;
       } else {
         const remainingTime = cfg.trialDuration - timeUsed;
-        const ticksAvailable = Math.floor(remainingTime / skillCfg.interval + 1e-9);
-        for (let k = 0; k < n; k++) contributions[k] += perMemberTick[k] * ticksAvailable;
-        progress += perTickTotal * ticksAvailable;
-        timeUsed += ticksAvailable * skillCfg.interval;
-        tierLog.push({ level: roomLevel, hp: required, hpFilled: progress, ticks: ticksAvailable, timeSpent: ticksAvailable * skillCfg.interval, cleared: false });
-        break;
+        const progress = totalRate * remainingTime;
+        tierLog.push({ level: room, hp: required, rate: totalRate, time: remainingTime, cleared: false, progress });
+        const frac = required > 0 ? clamp01(progress / required) : 0;
+        return { tiersCleared: tiers, roomLevel: room, progress, required, continuousScore: tiers + frac, lastClearedRate, tierLog, stalled };
       }
     }
-
-    const required = cfg.progressMult * roomLevel * rosterMult;
-    const continuousScore = tiersCleared + clamp01(required > 0 ? progress / required : 0);
-    return { tiersCleared, roomLevel, progress, required, timeUsed, contributions, stalled, continuousScore, tierLog };
+    const required = cfg.progressMult * room * rosterMult;
+    return { tiersCleared: tiers, roomLevel: room, progress: 0, required, continuousScore: tiers, lastClearedRate, tierLog, stalled };
   }
 
-  // ---------- Optimizer: greedy marginal-gain fill + remove/swap local search ----------
-  // Because required progress now rises with roster size (attendancePct), adding a weak
-  // member can genuinely make a trial worse, not just "dilute" it — so unlike a plain
-  // capacity-fill problem, some members may be better left unassigned, and the local
-  // search needs a "drop this member" move in addition to swaps.
-  function optimizeAssignment(members, skillConfigs, cfg) {
-    const T = skillConfigs.length;
-    const memberLevelsByTrial = skillConfigs.map((sc) => {
-      const buildingBonus = 2 * ((cfg.buildingLevels && cfg.buildingLevels[sc.skill]) || 0);
-      return members.map((m) => m.levels[sc.skill] + buildingBonus);
+  // ---------- Optimizer: greedy fill + prune + swap ----------
+  function optimizeAssignment(members, skills, cfg) {
+    const T = skills.length;
+    const statsByTrial = skills.map((skill) => {
+      const bl = (cfg.buildingLevels && cfg.buildingLevels[skill]) || 0;
+      return members.map((m) => playerSkillStats(m, skill, cfg, bl));
     });
-    const rosters = skillConfigs.map(() => []);
-    const currentScore = skillConfigs.map(() => 0);
+    const rosters = skills.map(() => []);
+    const currentScore = skills.map(() => 0);
     const unassigned = new Set(members.map((_, i) => i));
     const MAX_ROSTER = cfg.maxRoster;
-    const scoreOf = (t, roster) => simulateTrial(roster, memberLevelsByTrial[t], skillConfigs[t], cfg).continuousScore;
+    const scoreOf = (t, roster) => simulateTrial(roster.map((i) => statsByTrial[t][i]), skills[t], cfg).continuousScore;
 
     function greedyFill() {
       let addedAny = false;
@@ -676,7 +570,6 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
         const openTrials = [];
         for (let t = 0; t < T; t++) if (rosters[t].length < MAX_ROSTER) openTrials.push(t);
         if (openTrials.length === 0 || unassigned.size === 0) break;
-
         let bestGain = 1e-9, bestMember = -1, bestTrial = -1;
         for (const t of openTrials) {
           const base = currentScore[t];
@@ -685,7 +578,7 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
             if (gain > bestGain) { bestGain = gain; bestMember = m; bestTrial = t; }
           }
         }
-        if (bestMember === -1) break; // no remaining member would help any open trial
+        if (bestMember === -1) break;
         rosters[bestTrial].push(bestMember);
         unassigned.delete(bestMember);
         currentScore[bestTrial] = scoreOf(bestTrial, rosters[bestTrial]);
@@ -741,13 +634,10 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     }
 
     greedyFill();
-    // Snapshot the greedy-only outcome before any prune/swap round runs, purely so the
-    // page can show "what greedy alone would have produced" next to the final result.
     const greedyOnlyRosters = rosters.map((r) => r.slice());
-    const greedyOnlyResults = skillConfigs.map((sc, t) => {
-      const res = simulateTrial(greedyOnlyRosters[t], memberLevelsByTrial[t], sc, cfg);
-      return { skill: sc.skill, res, roster: greedyOnlyRosters[t] };
-    });
+    const greedyOnlyResults = skills.map((skill, t) => ({
+      skill, res: simulateTrial(greedyOnlyRosters[t].map((i) => statsByTrial[t][i]), skill, cfg), roster: greedyOnlyRosters[t]
+    }));
     const greedyOnlyUnassignedCount = members.length - greedyOnlyRosters.reduce((a, r) => a + r.length, 0);
 
     for (let round = 0; round < 4; round++) {
@@ -757,21 +647,31 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
       if (!pruned && !swapped && !refilled) break;
     }
 
-    const finalResults = skillConfigs.map((sc, t) => {
-      const res = simulateTrial(rosters[t], memberLevelsByTrial[t], sc, cfg);
-      const totalProgress = res.contributions.reduce((a, b) => a + b, 0);
-      const roster = rosters[t].map((memberIdx, k) => ({
-        member: members[memberIdx],
-        level: memberLevelsByTrial[t][memberIdx],
-        contribution: res.contributions[k],
-        pct: totalProgress > 0 ? (res.contributions[k] / totalProgress) * 100 : 0,
-      })).sort((a, b) => b.contribution - a.contribution);
-      return { skill: sc.skill, skillCfg: sc, res, roster };
+    const finalResults = skills.map((skill, t) => {
+      const res = simulateTrial(rosters[t].map((i) => statsByTrial[t][i]), skill, cfg);
+      const isEnh = skill === ENH;
+      const lastRoom = cfg.startLevel + Math.max(0, res.tiersCleared - 1) * cfg.levelStep;
+      const rows = rosters[t].map((memberIdx) => {
+        const st = statsByTrial[t][memberIdx];
+        const sr = successRate(st, lastRoom, cfg, isEnh);
+        return {
+          member: members[memberIdx],
+          csvLevel: members[memberIdx].skills[skill].level,
+          effLevel: st.effLevel,
+          interval: st.interval,
+          progPerAction: st.progPerAction,
+          success: sr,
+          doubleChance: st.doubleChance,
+          rate: st.rateFactor * sr,
+        };
+      });
+      const totalRate = rows.reduce((a, r) => a + r.rate, 0) || 1;
+      rows.forEach((r) => { r.pct = (r.rate / totalRate) * 100; });
+      rows.sort((a, b) => b.rate - a.rate);
+      return { skill, res, roster: rows, lastRoom };
     });
 
-    // Diff greedy-only vs final roster (by member index) per trial, so the page can show
-    // concretely who prune/swap moved in, moved out, or benched.
-    const rosterDiffs = skillConfigs.map((sc, t) => {
+    const rosterDiffs = skills.map((skill, t) => {
       const before = new Set(greedyOnlyRosters[t]);
       const after = new Set(rosters[t]);
       const joined = rosters[t].filter((i) => !before.has(i)).map((i) => members[i].name);
@@ -839,13 +739,8 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
       const cb = label.querySelector("input");
       const checked = selectedSkills.has(skill);
       label.classList.toggle("checked", checked);
-      if (!checked && selectedSkills.size >= 4) {
-        cb.disabled = true;
-        label.classList.add("disabled");
-      } else {
-        cb.disabled = false;
-        label.classList.remove("disabled");
-      }
+      if (!checked && selectedSkills.size >= 4) { cb.disabled = true; label.classList.add("disabled"); }
+      else { cb.disabled = false; label.classList.remove("disabled"); }
     }
   }
 
@@ -856,7 +751,7 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     thead.innerHTML = "";
     tbody.innerHTML = "";
     if (members.length === 0) return;
-    const cols = ["Name", "Role", "Total Level"].concat(SKILLS);
+    const cols = ["Name", "Role", "Total"].concat(SKILLS);
     const trHead = document.createElement("tr");
     for (const c of cols) {
       const th = document.createElement("th");
@@ -867,27 +762,38 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     thead.appendChild(trHead);
     for (const m of members) {
       const tr = document.createElement("tr");
-      const vals = [m.name, m.role, m.totalLevel].concat(SKILLS.map((s) => m.levels[s]));
-      vals.forEach((v, i) => {
+      // First three columns: name / role / total.
+      [m.name, m.role, m.totalLevel].forEach((v, i) => {
         const td = document.createElement("td");
         td.textContent = v;
         if (i >= 2) td.className = "num";
         tr.appendChild(td);
       });
+      // Per-skill cell: level (large) + tool/enhancement/house (muted sub-line).
+      for (const s of SKILLS) {
+        const sk = m.skills[s];
+        const toolAbbr = sk.tool === "celestial" ? "cel" : "holy";
+        const td = document.createElement("td");
+        td.className = "num";
+        td.style.whiteSpace = "nowrap";
+        const sub = 'color:var(--muted); font-size:0.72rem; font-weight:400; white-space:nowrap;';
+        td.innerHTML = sk.level +
+          '<div style="' + sub + '">' + toolAbbr + " +" + sk.enh + "</div>" +
+          '<div style="' + sub + '">h' + sk.house + "</div>";
+        tr.appendChild(td);
+      }
       tbody.appendChild(tr);
     }
-    document.getElementById("previewSummary").textContent = "Member preview (" + members.length + " members)";
+    document.getElementById("previewSummary").textContent = "Member preview (" + members.length + " members) — each skill shows level, tool +enh, and house (h)";
   }
 
   function updateRunEnabled() {
     document.getElementById("runBtn").disabled = !(members.length > 0 && selectedSkills.size === 4);
   }
-
   function updateExportButtons() {
     document.getElementById("exportMembersBtn").disabled = members.length === 0;
     document.getElementById("exportAssignmentBtn").disabled = lastOptResult === null;
   }
-
   function fmt(n) { return Math.round(n).toLocaleString(); }
 
   function renderResults(optResult, cfg) {
@@ -912,7 +818,7 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
 
     const unassignedDiv = document.getElementById("unassignedList");
     unassignedDiv.textContent = optResult.unassigned.length
-      ? "Not assigned to any trial (capacity reached, or joining would add more required progress than they'd contribute): " +
+      ? "Not assigned to any trial (capacity reached, or joining would add more required work than they'd contribute): " +
         optResult.unassigned.map((m) => m.name).join(", ")
       : "";
 
@@ -923,8 +829,6 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
       card.className = "card trial-card";
       const res = r.res;
       const pctInto = res.required > 0 ? clamp01(res.progress / res.required) * 100 : 0;
-      const startLvl = cfg.startLevel;
-      const finalLvlLabel = res.roomLevel;
 
       let badge = '<span class="badge">' + res.tiersCleared + " tiers cleared</span>";
       if (res.stalled) badge += ' <span class="badge stalled">stalled &mdash; no forward progress possible</span>';
@@ -933,27 +837,25 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
         "<h3>" + r.skill + "</h3>" +
         '<div class="trial-meta">' + badge +
         " &middot; Roster " + r.roster.length + "/" + cfg.maxRoster +
-        " &middot; L" + startLvl + " &rarr; L" + finalLvlLabel +
-        " &middot; " + fmt(res.timeUsed) + "s / " + fmt(cfg.trialDuration) + "s used" +
-        " &middot; interval " + r.skillCfg.interval.toFixed(2) + "s" +
-        " &middot; eff " + (r.skillCfg.efficiency * 100).toFixed(1) + "%" +
-        (r.skillCfg.doubleChance > 0 ? " &middot; double " + (r.skillCfg.doubleChance * 100).toFixed(1) + "%" : "") +
+        " &middot; L" + cfg.startLevel + " &rarr; L" + res.roomLevel +
+        (res.tiersCleared > 0 ? " &middot; " + res.lastClearedRate.toFixed(1) + " progress/s on last cleared tier (L" + r.lastRoom + ")" : "") +
         "</div>" +
         '<div class="progressbar"><div style="width:' + pctInto.toFixed(1) + '%"></div></div>' +
-        '<div class="trial-meta">Level ' + finalLvlLabel + " progress: " + fmt(res.progress) + " / " + fmt(res.required) + " (" + pctInto.toFixed(1) + "%)</div>";
+        '<div class="trial-meta">Current tier L' + res.roomLevel + ": " + fmt(res.progress) + " / " + fmt(res.required) + " (" + pctInto.toFixed(1) + "% into next tier)</div>";
 
       const table = document.createElement("table");
       const thead = document.createElement("thead");
-      thead.innerHTML = "<tr><th>Member</th><th class=\"num\">Level</th><th>Contribution</th><th class=\"num\">%</th></tr>";
+      thead.innerHTML = "<tr><th>Member</th><th class=\"num\">CSV</th><th class=\"num\">Eff</th><th class=\"num\">Prog/s</th><th class=\"num\">%</th></tr>";
       const tbody = document.createElement("tbody");
       for (const row of r.roster) {
         const tr = document.createElement("tr");
         const barWidth = Math.min(100, row.pct);
         tr.innerHTML =
           "<td>" + row.member.name + "</td>" +
-          '<td class="num">' + row.level + "</td>" +
-          '<td><span class="contrib-bar"><div style="width:' + barWidth.toFixed(1) + '%"></div></span></td>' +
-          '<td class="num">' + row.pct.toFixed(1) + "%</td>";
+          '<td class="num">' + row.csvLevel + "</td>" +
+          '<td class="num">' + row.effLevel + "</td>" +
+          '<td class="num">' + row.rate.toFixed(1) + "</td>" +
+          '<td class="num"><span class="contrib-bar"><div style="width:' + barWidth.toFixed(1) + '%"></div></span> ' + row.pct.toFixed(1) + "%</td>";
         tbody.appendChild(tr);
       }
       table.appendChild(thead);
@@ -964,17 +866,17 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
         const details = document.createElement("details");
         details.style.marginTop = "12px";
         const summaryEl = document.createElement("summary");
-        summaryEl.textContent = "Time &amp; HP per tier (" + res.tierLog.length + ") — click a tier for player stats";
+        summaryEl.innerHTML = "Time &amp; work per tier (" + res.tierLog.length + ") — click a tier for player stats";
         details.appendChild(summaryEl);
         const tierTable = document.createElement("table");
         const tierThead = document.createElement("thead");
-        tierThead.innerHTML = "<tr><th></th><th>Level</th><th class=\"num\">HP</th><th>Filled</th><th class=\"num\">Ticks</th><th class=\"num\">Time</th><th class=\"num\">Cumulative</th><th>Status</th></tr>";
+        tierThead.innerHTML = "<tr><th></th><th>Level</th><th class=\"num\">Work</th><th>Filled</th><th class=\"num\">Prog/s</th><th class=\"num\">Time</th><th class=\"num\">Cumulative</th><th>Status</th></tr>";
         const tierTbody = document.createElement("tbody");
         let cumulative = 0;
         for (const tier of res.tierLog) {
-          cumulative += tier.timeSpent;
-          const status = tier.cleared ? "Cleared" : (tier.ticks === 0 ? "Stalled" : "Partial (time ran out)");
-          const hpPct = tier.hp > 0 ? clamp01(tier.hpFilled / tier.hp) * 100 : 0;
+          cumulative += tier.time;
+          const status = tier.cleared ? "Cleared" : (tier.rate <= 0 ? "Stalled" : "Partial (time ran out)");
+          const hpPct = tier.hp > 0 ? clamp01(tier.progress / tier.hp) * 100 : 0;
 
           const tr = document.createElement("tr");
           tr.className = "tier-row";
@@ -983,9 +885,9 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
             "<td>" + tier.level + "</td>" +
             '<td class="num">' + fmt(tier.hp) + "</td>" +
             '<td><span class="contrib-bar"><div style="width:' + hpPct.toFixed(1) + '%"></div></span> ' +
-              fmt(tier.hpFilled) + " (" + hpPct.toFixed(1) + "%)</td>" +
-            '<td class="num">' + tier.ticks + "</td>" +
-            '<td class="num">' + tier.timeSpent.toFixed(1) + "s</td>" +
+              fmt(tier.progress) + " (" + hpPct.toFixed(1) + "%)</td>" +
+            '<td class="num">' + tier.rate.toFixed(1) + "</td>" +
+            '<td class="num">' + tier.time.toFixed(1) + "s</td>" +
             '<td class="num">' + cumulative.toFixed(1) + "s</td>" +
             "<td>" + status + "</td>";
 
@@ -997,18 +899,31 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
           const playerTable = document.createElement("table");
           playerTable.className = "player-stat-table";
           const playerThead = document.createElement("thead");
-          playerThead.innerHTML = "<tr><th>Member</th><th class=\"num\">Work Power</th><th class=\"num\">Work Time</th><th class=\"num\">Success Rate</th><th class=\"num\">Double Progress</th></tr>";
+          playerThead.innerHTML = "<tr><th>Member</th><th class=\"num\">Eff Lvl</th><th class=\"num\">Prog/action</th><th class=\"num\">Interval</th><th class=\"num\">Success</th><th class=\"num\">Double</th><th class=\"num\">Prog/s</th></tr>";
           const playerTbody = document.createElement("tbody");
+          const isEnh = r.skill === ENH;
           for (const row of r.roster) {
-            const workPower = Math.max(0, Math.floor(row.level * (1 + r.skillCfg.efficiency)));
-            const sr = successRate(row.level, tier.level, cfg);
+            // Recompute success at THIS tier's room level (with the member's real enhancement bonus).
+            const delta = row.effLevel - tier.level;
+            const bonus = delta >= 0 ? delta * cfg.bonusAbove : delta * cfg.penaltyBelow;
+            let realSr = cfg.baseSuccess * (1 + bonus);
+            if (isEnh) {
+              const sk = row.member.skills[r.skill];
+              const ef = enhFactor(sk.enh);
+              const baseTool = sk.tool === "holy" ? cfg.enhToolHoly : cfg.enhToolCelestial;
+              realSr += baseTool * ef + sk.house * cfg.enhHouseSuccess;
+            }
+            realSr = Math.max(cfg.minSuccess, clamp01(realSr));
+            const rate = row.progPerAction * (1 + row.doubleChance) / row.interval * realSr;
             const pTr = document.createElement("tr");
             pTr.innerHTML =
               "<td>" + row.member.name + "</td>" +
-              '<td class="num">' + workPower + "</td>" +
-              '<td class="num">' + r.skillCfg.interval.toFixed(2) + "s</td>" +
-              '<td class="num">' + (sr * 100).toFixed(0) + "%</td>" +
-              '<td class="num">' + (r.skillCfg.doubleChance * 100).toFixed(0) + "%</td>";
+              '<td class="num">' + row.effLevel + "</td>" +
+              '<td class="num">' + row.progPerAction + "</td>" +
+              '<td class="num">' + row.interval.toFixed(2) + "s</td>" +
+              '<td class="num">' + (realSr * 100).toFixed(0) + "%</td>" +
+              '<td class="num">' + (row.doubleChance * 100).toFixed(0) + "%</td>" +
+              '<td class="num">' + rate.toFixed(1) + "</td>";
             playerTbody.appendChild(pTr);
           }
           playerTable.appendChild(playerThead);
@@ -1035,119 +950,53 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     }
   }
 
-  function renderGreedyCompare(optResult) {
-    const host = document.getElementById("greedyCompareContent");
-    host.innerHTML = "";
-
-    const greedyTotalTiers = optResult.greedyOnlyResults.reduce((a, r) => a + r.res.tiersCleared, 0);
-    const greedyTotalScore = optResult.greedyOnlyResults.reduce((a, r) => a + r.res.continuousScore, 0);
-    const finalTotalTiers = optResult.finalResults.reduce((a, r) => a + r.res.tiersCleared, 0);
-    const finalTotalScore = optResult.finalResults.reduce((a, r) => a + r.res.continuousScore, 0);
-
-    const summary = document.createElement("p");
-    summary.className = "note";
-    summary.style.fontSize = "0.85rem";
-    summary.innerHTML =
-      "<strong>Greedy fill only:</strong> " + greedyTotalTiers + " tiers, continuous score " + greedyTotalScore.toFixed(3) +
-      ", " + optResult.greedyOnlyUnassignedCount + " unassigned. &nbsp; " +
-      "<strong>After prune + swap:</strong> " + finalTotalTiers + " tiers, continuous score " + finalTotalScore.toFixed(3) +
-      ", " + optResult.unassigned.length + " unassigned. &nbsp; " +
-      "<strong>Δ continuous score: " + (finalTotalScore - greedyTotalScore >= 0 ? "+" : "") + (finalTotalScore - greedyTotalScore).toFixed(3) + "</strong>" +
-      (finalTotalTiers !== greedyTotalTiers ? " (Δ tiers: " + (finalTotalTiers - greedyTotalTiers >= 0 ? "+" : "") + (finalTotalTiers - greedyTotalTiers) + ")" : "");
-    host.appendChild(summary);
-
-    const table = document.createElement("table");
-    const thead = document.createElement("thead");
-    thead.innerHTML =
-      "<tr><th>Trial</th><th class=\"num\">Greedy-only tiers</th><th class=\"num\">Final tiers</th>" +
-      "<th class=\"num\">Greedy-only score</th><th class=\"num\">Final score</th><th>Moved in by prune/swap</th><th>Moved out by prune/swap</th></tr>";
-    const tbody = document.createElement("tbody");
-    optResult.finalResults.forEach((r, t) => {
-      const g = optResult.greedyOnlyResults[t];
-      const diff = optResult.rosterDiffs[t];
-      const tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" + r.skill + "</td>" +
-        '<td class="num">' + g.res.tiersCleared + "</td>" +
-        '<td class="num">' + r.res.tiersCleared + "</td>" +
-        '<td class="num">' + g.res.continuousScore.toFixed(3) + "</td>" +
-        '<td class="num">' + r.res.continuousScore.toFixed(3) + "</td>" +
-        "<td>" + (diff.joined.length ? diff.joined.join(", ") : "&mdash;") + "</td>" +
-        "<td>" + (diff.left.length ? diff.left.join(", ") : "&mdash;") + "</td>";
-      tbody.appendChild(tr);
-    });
-    table.appendChild(thead);
-    table.appendChild(tbody);
-    host.appendChild(table);
-
-    if (optResult.finalResults.every((r, t) => optResult.rosterDiffs[t].joined.length === 0 && optResult.rosterDiffs[t].left.length === 0)) {
-      const note = document.createElement("p");
-      note.className = "note";
-      note.style.fontSize = "0.85rem";
-      note.textContent = "No roster changes this run — greedy fill alone already reached a local optimum for prune/swap on this data.";
-      host.appendChild(note);
-    }
-  }
-
   // ---------- CSV export ----------
   function csvEscape(value) {
     const s = String(value === undefined || value === null ? "" : value);
     if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
     return s;
   }
-
-  function toCsv(rows) {
-    return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
-  }
-
+  function toCsv(rows) { return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n"); }
   function formatDateForFilename() {
     const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return yyyy + "." + mm + "." + dd;
+    return d.getFullYear() + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + String(d.getDate()).padStart(2, "0");
   }
-
   function downloadCSV(filename, csvText) {
     const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
-
   function buildMemberProfileCSV(memberList) {
-    const rows = [["Player"].concat(SKILLS)];
+    // Player + per-skill level / tool / enhancement / house (re-importable).
+    const header = ["Player"];
+    for (const s of SKILLS) header.push(s, s + " Tool", s + " Tool Enh", s + " House");
+    const rows = [header];
     for (const m of memberList) {
-      rows.push([m.name].concat(SKILLS.map((s) => m.levels[s])));
+      const row = [m.name];
+      for (const s of SKILLS) { const sk = m.skills[s]; row.push(sk.level, sk.tool, sk.enh, sk.house); }
+      rows.push(row);
     }
     return toCsv(rows);
   }
-
   function buildTrialAssignmentsCSV(optResult, cfg) {
     const rows = [];
     rows.push(["Skilling Trials - Optimizer Assignment (" + optResult.finalResults.map((r) => r.skill).join(" / ") + ")"]);
     rows.push([]);
-    rows.push(["Trial", "Roster Size", "Tiers Cleared", "Final Level", "Progress Into Next Tier"]);
-    let totalTiers = 0;
-    let totalRoster = 0;
+    rows.push(["Trial", "Roster Size", "Tiers Cleared", "Final Level", "Progress/s (last cleared tier)", "Progress Into Next Tier"]);
+    let totalTiers = 0, totalRoster = 0;
     for (const r of optResult.finalResults) {
       const pctInto = r.res.required > 0 ? clamp01(r.res.progress / r.res.required) * 100 : 0;
-      rows.push([r.skill, r.roster.length, r.res.tiersCleared, r.res.roomLevel, pctInto.toFixed(1) + "%"]);
-      totalTiers += r.res.tiersCleared;
-      totalRoster += r.roster.length;
+      rows.push([r.skill, r.roster.length, r.res.tiersCleared, r.res.roomLevel, r.res.lastClearedRate.toFixed(1), pctInto.toFixed(1) + "%"]);
+      totalTiers += r.res.tiersCleared; totalRoster += r.roster.length;
     }
-    rows.push(["TOTAL", totalRoster, totalTiers, "", ""]);
+    rows.push(["TOTAL", totalRoster, totalTiers, "", "", ""]);
     rows.push([]);
-    rows.push(["Player", "Trial", "Level", "Contribution %"]);
+    rows.push(["Player", "Trial", "CSV Level", "Effective Level", "Contribution %"]);
     for (const r of optResult.finalResults) {
-      for (const row of r.roster) {
-        rows.push([row.member.name, r.skill, row.level, row.pct.toFixed(2) + "%"]);
-      }
+      for (const row of r.roster) rows.push([row.member.name, r.skill, row.csvLevel, row.effLevel, row.pct.toFixed(2) + "%"]);
     }
     if (optResult.unassigned.length) {
       rows.push([]);
@@ -1168,17 +1017,12 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
         const statusEl = document.getElementById("csvStatus");
         statusEl.textContent = "Loaded " + members.length + " members from “" + file.name + "”.";
         statusEl.className = "status ok";
-        renderPreview();
-        updateRunEnabled();
-        updateExportButtons();
-        saveState();
+        renderPreview(); updateRunEnabled(); updateExportButtons(); saveState();
       } catch (err) {
         const statusEl = document.getElementById("csvStatus");
         statusEl.textContent = "Error: " + err.message;
         statusEl.className = "status err";
-        members = [];
-        updateRunEnabled();
-        updateExportButtons();
+        members = []; updateRunEnabled(); updateExportButtons();
       }
     };
     reader.onerror = () => {
@@ -1189,57 +1033,22 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     reader.readAsText(file);
   });
 
-  document.getElementById("importSheetBtn").addEventListener("click", async () => {
-    const status = document.getElementById("sheetStatus");
-    const btn = document.getElementById("importSheetBtn");
-    status.className = "status";
-    status.textContent = "Fetching sheet…";
-    btn.disabled = true;
-    try {
-      const id = extractSheetId(document.getElementById("sheetUrl").value);
-      const tab = (document.getElementById("sheetTab").value || "").trim() || "Skilling Trials";
-      if (!id) throw new Error("Enter a Google Sheet URL or ID.");
-      const resp = await fetch(gvizCsvUrl(id, tab));
-      if (!resp.ok) throw new Error("HTTP " + resp.status + " — is the sheet shared as 'Anyone with the link can view' and the tab name correct?");
-      const rows = parseCSV(await resp.text());
-      members = loadMembersFromSheetRows(rows);
-      const csvStatus = document.getElementById("csvStatus");
-      csvStatus.textContent = "Loaded " + members.length + " players from the Google Sheet grid.";
-      csvStatus.className = "status ok";
-      status.textContent = "Imported " + members.length + " players. Pick 4 skills, then Optimize.";
-      status.className = "status ok";
-      renderPreview();
-      updateRunEnabled();
-      updateExportButtons();
-      saveState();
-    } catch (err) {
-      status.textContent = "Error: " + err.message;
-      status.className = "status err";
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
   document.getElementById("resetCfgBtn").addEventListener("click", resetConfig);
 
   document.getElementById("runBtn").addEventListener("click", () => {
     const runStatus = document.getElementById("runStatus");
     const spinner = document.getElementById("spinner");
     spinner.classList.add("active");
-    runStatus.textContent = "";
-    runStatus.className = "status";
-    // Defer so the spinner can paint before the (synchronous) optimization runs.
+    runStatus.textContent = ""; runStatus.className = "status";
     setTimeout(() => {
       try {
         const cfg = readConfig();
-        const skillConfigs = Array.from(selectedSkills).map((s) => computeSkillConfig(s, cfg));
+        const skills = Array.from(selectedSkills);
         const t0 = performance.now();
-        const optResult = optimizeAssignment(members, skillConfigs, cfg);
+        const optResult = optimizeAssignment(members, skills, cfg);
         const t1 = performance.now();
         renderResults(optResult, cfg);
-        renderGreedyCompare(optResult);
-        lastOptResult = optResult;
-        lastCfg = cfg;
+        lastOptResult = optResult; lastCfg = cfg;
         updateExportButtons();
         runStatus.textContent = "Done in " + Math.round(t1 - t0) + "ms.";
         runStatus.className = "status ok";
@@ -1254,44 +1063,31 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
 
   document.getElementById("exportMembersBtn").addEventListener("click", () => {
     const status = document.getElementById("exportStatus");
-    if (members.length === 0) {
-      status.textContent = "Load member data first.";
-      status.className = "status err";
-      return;
-    }
+    if (members.length === 0) { status.textContent = "Load member data first."; status.className = "status err"; return; }
     const filename = "member_profile_" + formatDateForFilename() + ".csv";
     downloadCSV(filename, buildMemberProfileCSV(members));
-    status.textContent = "Downloaded " + filename + " (" + members.length + " players).";
-    status.className = "status ok";
+    status.textContent = "Downloaded " + filename + " (" + members.length + " players)."; status.className = "status ok";
   });
 
   document.getElementById("exportAssignmentBtn").addEventListener("click", () => {
     const status = document.getElementById("exportStatus");
-    if (!lastOptResult) {
-      status.textContent = "Run \"Optimize Assignment\" first.";
-      status.className = "status err";
-      return;
-    }
+    if (!lastOptResult) { status.textContent = "Run \"Optimize Assignment\" first."; status.className = "status err"; return; }
     const filename = "trial_assignments_" + formatDateForFilename() + ".csv";
     downloadCSV(filename, buildTrialAssignmentsCSV(lastOptResult, lastCfg));
-    status.textContent = "Downloaded " + filename + ".";
-    status.className = "status ok";
+    status.textContent = "Downloaded " + filename + "."; status.className = "status ok";
   });
 
   // Best-effort auto-load if served over http(s) with the CSV alongside this file.
   function tryAutoLoad() {
     if (location.protocol === "file:") return;
-    fetch("./The Arsenal_members_2026-07-24.csv")
+    fetch("./data/The Arsenal_members_2026-07-25.csv")
       .then((r) => (r.ok ? r.text() : Promise.reject()))
       .then((text) => {
         members = loadMembersFromCSV(text);
         const statusEl = document.getElementById("csvStatus");
         statusEl.textContent = "Auto-loaded " + members.length + " members.";
         statusEl.className = "status ok";
-        renderPreview();
-        updateRunEnabled();
-        updateExportButtons();
-        saveState();
+        renderPreview(); updateRunEnabled(); updateExportButtons(); saveState();
       })
       .catch(() => {});
   }
@@ -1299,14 +1095,10 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
   renderSkillsGrid();
   renderBuildingsGrid();
 
-  // Restore cached state (config, selected skills, loaded members) from localStorage, if present.
   const restoredState = loadState();
   if (restoredState) {
     if (restoredState.cfgValues) {
-      for (const id in restoredState.cfgValues) {
-        const el = document.getElementById(id);
-        if (el) el.value = restoredState.cfgValues[id];
-      }
+      for (const id in restoredState.cfgValues) { const el = document.getElementById(id); if (el) el.value = restoredState.cfgValues[id]; }
     }
     if (Array.isArray(restoredState.selectedSkills)) {
       const grid = document.getElementById("skillsGrid");
@@ -1320,7 +1112,7 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
       }
       updateSkillsUI();
     }
-    if (Array.isArray(restoredState.members) && restoredState.members.length) {
+    if (Array.isArray(restoredState.members) && restoredState.members.length && restoredState.members[0].skills) {
       members = restoredState.members;
       renderPreview();
       const statusEl = document.getElementById("csvStatus");
@@ -1329,7 +1121,6 @@ ticksNeeded     = ceil((tier HP &minus; progress) / sum(perMemberTick over roste
     }
   }
 
-  // Wire every assumptions-panel input to autosave on change (building inputs wire themselves in renderBuildingsGrid).
   for (const id in DEFAULTS) {
     if (id.indexOf("cfg-building-") === 0) continue;
     const el = document.getElementById(id);
