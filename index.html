@@ -140,6 +140,20 @@
   .unassigned-list { font-size: 0.85rem; color: var(--muted); }
   #spinner { display: none; }
   #spinner.active { display: inline-block; }
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    background: transparent; color: var(--muted); border: none;
+    border-bottom: 2px solid transparent; border-radius: 0;
+    padding: 10px 16px; font-weight: 600; font-size: 0.95rem;
+  }
+  .tab-btn:hover:not(.active) { color: var(--text); filter: none; }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  textarea {
+    width: 100%; min-height: 140px; resize: vertical;
+    font-family: var(--mono); font-size: 0.78rem;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+  }
 </style>
 </head>
 <body>
@@ -253,6 +267,13 @@
     <div class="skills-grid" id="buildingsGrid"></div>
   </div>
 
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtn-optimizer" type="button">Optimizer</button>
+    <button class="tab-btn" id="tabBtn-signup" type="button">Sign-up Simulator</button>
+  </div>
+
+  <div id="tab-optimizer">
+
   <div class="card">
     <div class="row">
       <button id="runBtn" disabled>Optimize Assignment</button>
@@ -281,6 +302,35 @@
     </div>
     <div class="results-grid" id="resultsGrid"></div>
   </div>
+
+  </div><!-- /tab-optimizer -->
+
+  <div id="tab-signup" style="display:none;">
+
+  <div class="card">
+    <h2>Simulate Current Sign-up</h2>
+    <p class="note" style="font-size:0.85rem;">
+      Paste the guild members table HTML (the Contributions view with the <strong>Trial Signups</strong> icon
+      column). Each member is placed in the trial they personally signed up for &mdash; no reshuffling.
+      Member stats come from the CSV loaded in section 1; the 4 trial skills from section 2 (both cached).
+    </p>
+    <textarea id="signupText" placeholder="Paste the &lt;table&gt;&hellip;&lt;/table&gt; HTML containing data-name=&quot;&hellip;&quot; rows and svg#milking / svg#woodcutting &hellip; signup icons here"></textarea>
+    <div class="row" style="margin-top:10px;">
+      <button id="signupRunBtn" disabled>Simulate Sign-up</button>
+      <span id="signupStatus" class="status"></span>
+    </div>
+  </div>
+
+  <div id="signupResultsSection" style="display:none;">
+    <div class="card">
+      <h2>Sign-up Results</h2>
+      <div class="summary-band" id="signupSummaryBand"></div>
+      <div class="unassigned-list" id="signupNotes" style="margin-top:8px;"></div>
+    </div>
+    <div class="results-grid" id="signupResultsGrid"></div>
+  </div>
+
+  </div><!-- /tab-signup -->
 
 </div>
 
@@ -312,6 +362,7 @@
   let selectedSkills = new Set();
   let lastOptResult = null;
   let lastCfg = null;
+  let activeTab = "optimizer"; // "optimizer" | "signup"
 
   // ---------- CSV parsing ----------
   function parseCSV(text) {
@@ -458,7 +509,13 @@
     try {
       const cfgValues = {};
       for (const id in DEFAULTS) { const el = document.getElementById(id); if (el) cfgValues[id] = el.value; }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ cfgValues, selectedSkills: Array.from(selectedSkills), members }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        cfgValues,
+        selectedSkills: Array.from(selectedSkills),
+        members,
+        signupText: document.getElementById("signupText").value,
+        activeTab,
+      }));
     } catch (e) { /* ignore */ }
   }
   function loadState() {
@@ -804,7 +861,9 @@
   }
 
   function updateRunEnabled() {
-    document.getElementById("runBtn").disabled = !(members.length > 0 && selectedSkills.size === 4);
+    const ready = members.length > 0 && selectedSkills.size === 4;
+    document.getElementById("runBtn").disabled = !ready;
+    document.getElementById("signupRunBtn").disabled = !(ready && document.getElementById("signupText").value.trim() !== "");
   }
   function updateExportButtons() {
     document.getElementById("exportMembersBtn").disabled = members.length === 0;
@@ -973,6 +1032,176 @@
     }
   }
 
+  // ---------- Tabs ----------
+  function switchTab(name) {
+    activeTab = name;
+    document.getElementById("tab-optimizer").style.display = name === "optimizer" ? "" : "none";
+    document.getElementById("tab-signup").style.display = name === "signup" ? "" : "none";
+    document.getElementById("tabBtn-optimizer").classList.toggle("active", name === "optimizer");
+    document.getElementById("tabBtn-signup").classList.toggle("active", name === "signup");
+    saveState();
+  }
+
+  // ---------- Sign-up simulator (fixed assignment from pasted guild HTML) ----------
+  // The pasted table encodes each member's trial sign-ups as icon references like
+  // svg#milking / svg#woodcutting inside the "Trial Signups" cell.
+  const SVG2SKILL = {
+    milking: "Milking", foraging: "Foraging", woodcutting: "Woodcutting",
+    cheese: "Cheesesmithing", cheesesmithing: "Cheesesmithing",
+    crafting: "Crafting", tailoring: "Tailoring", cooking: "Cooking",
+    brewing: "Brewing", alchemy: "Alchemy", enhancing: "Enhancing",
+  };
+
+  function parseSignups(html) {
+    const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+    const byName = new Map(); // name -> [skills signed up for]
+    for (const r of rows) {
+      const nm = r.match(/data-name="([^"]+)"/);
+      if (!nm || byName.has(nm[1])) continue;
+      // Scan ONLY the signups cell — the name cell also contains an (unrelated) chat icon svg ref.
+      const cell = r.match(/GuildPanel_signups__[^"]*"[^>]*>([\s\S]*?)<\/td>/);
+      const skills = [];
+      if (cell) {
+        let m;
+        const reSvg = /svg#([a-z_]+)/g;
+        while ((m = reSvg.exec(cell[1]))) {
+          const s = SVG2SKILL[m[1]];
+          if (s && !skills.includes(s)) skills.push(s);
+        }
+        const reTitle = /title="([A-Za-z]+)"/g; // fallback: icon title attributes
+        while ((m = reTitle.exec(cell[1]))) {
+          const s = SKILLS.find((k) => k.toLowerCase() === m[1].toLowerCase());
+          if (s && !skills.includes(s)) skills.push(s);
+        }
+      }
+      byName.set(nm[1], skills);
+    }
+    return byName;
+  }
+
+  function runSignupSim() {
+    const status = document.getElementById("signupStatus");
+    status.className = "status";
+    try {
+      if (members.length === 0) throw new Error("Load the member CSV first (section 1).");
+      const skills = Array.from(selectedSkills);
+      if (skills.length !== 4) throw new Error("Choose exactly 4 trial skills first (section 2).");
+      const signups = parseSignups(document.getElementById("signupText").value);
+      if (signups.size === 0) throw new Error('No members found — paste the guild table HTML containing data-name="…" rows.');
+
+      const cfg = readConfig();
+      const memberByName = new Map(members.map((m) => [m.name, m]));
+      const rosters = Object.fromEntries(skills.map((s) => [s, []]));
+      const missingStats = []; // signed up for a selected trial, but not in the CSV
+      const sittingOut = [];   // signed up for none of the 4 selected trials
+      for (const [name, sk] of signups) {
+        const chosen = sk.find((s) => skills.includes(s));
+        if (!chosen) { sittingOut.push(name); continue; }
+        const m = memberByName.get(name);
+        if (!m) { missingStats.push(name + " [" + chosen + "]"); continue; }
+        rosters[chosen].push(m);
+      }
+
+      const results = skills.map((skill) => {
+        const bl = (cfg.buildingLevels && cfg.buildingLevels[skill]) || 0;
+        const roster = rosters[skill];
+        const stats = roster.map((m) => playerSkillStats(m, skill, cfg, bl));
+        const res = simulateTrial(stats, skill, cfg);
+        const isEnh = skill === ENH;
+        const lastRoom = cfg.startLevel + Math.max(0, res.tiersCleared - 1) * cfg.levelStep;
+        const rows = roster.map((m, i) => {
+          const st = stats[i];
+          const sr = successRate(st, lastRoom, cfg, isEnh);
+          return { name: m.name, csvLevel: m.skills[skill].level, effLevel: st.effLevel, rate: st.rateFactor * sr };
+        });
+        const totalRate = rows.reduce((a, r) => a + r.rate, 0) || 1;
+        rows.forEach((r) => { r.pct = (r.rate / totalRate) * 100; });
+        rows.sort((a, b) => b.rate - a.rate);
+        return { skill, res, rows, lastRoom };
+      });
+
+      renderSignupResults(results, { sittingOut, missingStats, participants: results.reduce((a, r) => a + r.rows.length, 0) }, cfg);
+      status.textContent = "Simulated " + signups.size + " signed-up members.";
+      status.className = "status ok";
+      saveState();
+    } catch (err) {
+      status.textContent = "Error: " + err.message;
+      status.className = "status err";
+    }
+  }
+
+  function renderSignupResults(results, info, cfg) {
+    document.getElementById("signupResultsSection").style.display = "";
+    const totalTiers = results.reduce((a, r) => a + r.res.tiersCleared, 0);
+
+    const summary = document.getElementById("signupSummaryBand");
+    summary.innerHTML = "";
+    const stats = [
+      [totalTiers, "Total Tiers Cleared"],
+      [info.participants, "Participants"],
+      [info.sittingOut.length, "Not Signed Up (these 4)"],
+      [info.missingStats.length, "No CSV Stats"],
+    ];
+    for (const [n, l] of stats) {
+      const div = document.createElement("div");
+      div.className = "summary-stat";
+      div.innerHTML = '<div class="n">' + n + '</div><div class="l">' + l + "</div>";
+      summary.appendChild(div);
+    }
+
+    const notes = document.getElementById("signupNotes");
+    let noteHtml = "";
+    if (info.sittingOut.length) noteHtml += "<div><strong>Sitting out</strong> (signed up for none of the selected trials): " + info.sittingOut.join(", ") + "</div>";
+    if (info.missingStats.length) noteHtml += '<div style="margin-top:4px;"><strong>Skipped, no stats in CSV:</strong> ' + info.missingStats.join(", ") + "</div>";
+    notes.innerHTML = noteHtml;
+
+    const grid = document.getElementById("signupResultsGrid");
+    grid.innerHTML = "";
+    for (const r of results) {
+      const res = r.res;
+      const card = document.createElement("div");
+      card.className = "card trial-card";
+      const pctInto = res.required > 0 ? clamp01(res.progress / res.required) * 100 : 0;
+      const marginPct = cfg.robustMargin * 100;
+      const robust = res.tiersCleared > 0 && pctInto >= marginPct - 1e-9;
+      let badge = '<span class="badge">' + res.tiersCleared + " tiers cleared</span>";
+      if (res.tiersCleared > 0 && marginPct > 0) {
+        badge += robust
+          ? ' <span class="badge" style="background:rgba(31,191,96,0.15); color:var(--good);">robust &middot; ' + pctInto.toFixed(0) + "% buffer</span>"
+          : ' <span class="badge stalled">fragile &middot; ' + pctInto.toFixed(1) + "% &lt; " + marginPct.toFixed(0) + "% buffer</span>";
+      }
+      if (res.stalled) badge += ' <span class="badge stalled">stalled</span>';
+
+      card.innerHTML =
+        "<h3>" + r.skill + "</h3>" +
+        '<div class="trial-meta">' + badge +
+        " &middot; Roster " + r.rows.length +
+        " &middot; L" + cfg.startLevel + " &rarr; L" + res.roomLevel +
+        (res.tiersCleared > 0 ? " &middot; " + res.lastClearedRate.toFixed(1) + " progress/s on last cleared tier (L" + r.lastRoom + ")" : "") +
+        "</div>" +
+        '<div class="progressbar"><div style="width:' + pctInto.toFixed(1) + '%"></div></div>' +
+        '<div class="trial-meta">Failed tier L' + res.roomLevel + ": " + fmt(res.progress) + " / " + fmt(res.required) + " (" + pctInto.toFixed(1) + "%)</div>";
+
+      const table = document.createElement("table");
+      table.innerHTML =
+        "<thead><tr><th>Member</th><th class=\"num\">CSV</th><th class=\"num\">Eff</th><th class=\"num\">Prog/s</th><th class=\"num\">%</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+      for (const row of r.rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + row.name + "</td>" +
+          '<td class="num">' + row.csvLevel + "</td>" +
+          '<td class="num">' + row.effLevel + "</td>" +
+          '<td class="num">' + row.rate.toFixed(1) + "</td>" +
+          '<td class="num"><span class="contrib-bar"><div style="width:' + Math.min(100, row.pct).toFixed(1) + '%"></div></span> ' + row.pct.toFixed(1) + "%</td>";
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      card.appendChild(table);
+      grid.appendChild(card);
+    }
+  }
+
   // ---------- CSV export ----------
   function csvEscape(value) {
     const s = String(value === undefined || value === null ? "" : value);
@@ -1058,6 +1287,11 @@
 
   document.getElementById("resetCfgBtn").addEventListener("click", resetConfig);
 
+  document.getElementById("tabBtn-optimizer").addEventListener("click", () => switchTab("optimizer"));
+  document.getElementById("tabBtn-signup").addEventListener("click", () => switchTab("signup"));
+  document.getElementById("signupRunBtn").addEventListener("click", runSignupSim);
+  document.getElementById("signupText").addEventListener("input", () => { updateRunEnabled(); saveState(); });
+
   document.getElementById("runBtn").addEventListener("click", () => {
     const runStatus = document.getElementById("runStatus");
     const spinner = document.getElementById("spinner");
@@ -1141,6 +1375,12 @@
       const statusEl = document.getElementById("csvStatus");
       statusEl.textContent = "Restored " + members.length + " members from a previous session (localStorage).";
       statusEl.className = "status ok";
+    }
+    if (typeof restoredState.signupText === "string") {
+      document.getElementById("signupText").value = restoredState.signupText;
+    }
+    if (restoredState.activeTab === "signup" || restoredState.activeTab === "optimizer") {
+      switchTab(restoredState.activeTab);
     }
   }
 
