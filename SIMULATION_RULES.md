@@ -21,8 +21,8 @@ Skill groupings used throughout:
 
 ### Gear bonuses (global, fixed)
 
-Gear is not read per member from the CSV (only tools and houses are) — these are fixed
-bonuses at the stated enhancement level:
+This gear is not read per member from the CSV (tools, houses, and **outfits** are — see
+rules 1.4 and 1.5) — these are fixed bonuses at the stated enhancement level:
 
 | Gear (enh) | Applies to | Bonus |
 | --- | --- | --- |
@@ -45,12 +45,13 @@ efficiency at all (its progress is flat — see rule 4.4).
 We load members from a CSV like `The Arsenal_members_2026-07-25.csv`.
 
 - **1.1** We only care, per member, about the **10 skills**, and for each skill its
-  **level**, **tool**, and **house**. Relevant columns per skill `S`:
+  **level**, **tool**, **house**, and **outfit** (top + bottom). Relevant columns per skill `S`:
   `S` (level), `S Tool` (`holy` / `celestial` / blank), `S Tool Enh` (enhancement level,
-  integer), `S House` (house level, integer).
+  integer), `S House` (house level, integer), and optionally `S Top` / `S Bottom`
+  (outfit enhancement levels — see rule 1.5).
 - **1.2 Missing data defaults:** missing tool → **holy at +5**; missing house → **level 3**.
   (Applied per field: a blank tool defaults to holy, a blank enhancement defaults to +5, a
-  blank house defaults to 3.)
+  blank house defaults to 3.) Outfits do NOT default — see rule 1.5: blank means no outfit.
 - **1.3 House bonuses** (per house level):
   - **1.3.1 Enhancing house:** `+0.05%` success rate **and** `+1%` speed **per level**.
   - **1.3.2 Other houses:** `+1.5%` efficiency **per level**.
@@ -71,6 +72,19 @@ We load members from a CSV like `The Arsenal_members_2026-07-25.csv`.
     `+0` = 0%. **`tool_bonus = base_bonus × (1 + table[enh])`.**
     - e.g. a **+5 holy Milking tool** → `90% × 1.12 = 100.8%` speed.
     - e.g. a **+10 celestial Woodcutting tool** → `105% × 1.29 = 135.45%` speed.
+- **1.5 Outfits (top & bottom)** — each skill has a **top** and a **bottom** outfit piece,
+  read per member from optional columns `S Top` / `S Bottom`:
+  - **Column semantics:** empty, or any number `< 0` → the member has **no** such piece
+    (no default is assumed, unlike tools/houses). A number `≥ 0` is the piece's
+    **enhancement level** (`0` = a +0 piece).
+  - **1.5.1 Bonus per piece at +0:** `+10%` **efficiency** — except **Enhancing outfits**,
+    which give `+10%` **speed** per piece instead (Enhancing uses no efficiency, rule 4.4).
+  - **1.5.2 Enhancement scaling:** same table as tools (rule 1.4.3):
+    `outfit_bonus = 10% × (1 + table[enh])` per piece; top and bottom each scale by their
+    own level and stack additively.
+    - e.g. a **+5 top and +5 bottom** → `10% × 1.12 × 2 = 22.4%` efficiency
+      (or speed, on Enhancing).
+    - e.g. only a **+0 top**, no bottom → `+10%`.
 
 ## 2. Trial selection
 
@@ -118,8 +132,11 @@ Foraging, Woodcutting), **eye watch** (artisan — Cheesesmithing, Crafting, Tai
 **red culinary hat** (Cooking, Brewing). Alchemy has no efficiency gear.
 With the community multiplier the community part becomes `16.8%`.
 
+Members with outfit pieces (rule 1.5) add `10% × (1 + table[enh])` per piece on top.
+
 ```
 efficiency = houseLevel × 0.015 + 0.02 + 0.168 + (hasEfficiencyGear ? 0.112 : 0)
+           + outfitTop + outfitBottom          # rule 1.5, per-member, 0 if no piece
              # hasEfficiencyGear = gathering | artisan | cooking/brewing  (not Alchemy)
 ```
 
@@ -135,6 +152,7 @@ speed = 0.05 (cape)
       + 0.052 (neck +3)
       + 0.24  (community)     (Enhancing only; 20% baseline × 1.2)
       + houseSpeed           (Enhancing only: houseLevel × 0.01, rule 1.3.1)
+      + outfitSpeed          (Enhancing only: 10% × (1 + table[enh]) per outfit piece, rule 1.5)
 ```
 
 ### 4.6 Interval

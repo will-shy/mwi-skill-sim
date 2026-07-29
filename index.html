@@ -216,7 +216,8 @@
           <div class="cfg-field"><label title="Collector's boots — Milking, Foraging, Woodcutting">Gathering gear (boots)</label><input type="number" id="cfg-gatheringEffGear" value="11.2" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label title="Eye watch — Cheesesmithing, Crafting, Tailoring">Artisan gear (watch)</label><input type="number" id="cfg-artisanGear" value="11.2" step="0.1"><span class="unit">%</span></div>
           <div class="cfg-field"><label title="Red culinary hat — Cooking, Brewing">Cooking/Brewing gear (hat)</label><input type="number" id="cfg-cookBrewGear" value="11.2" step="0.1"><span class="unit">%</span></div>
-          <div class="note">Efficiency gear: boots (gathering), eye watch (artisan), red culinary hat (cooking/brewing). Alchemy has none; Enhancing uses no efficiency.</div>
+          <div class="cfg-field"><label title="Per outfit piece (top / bottom) at +0, read per member from optional 'Skill Top' / 'Skill Bottom' CSV columns (empty or <0 = no piece); scaled by the enhancement table. On Enhancing it's speed instead of efficiency.">Outfit piece (top/bottom)</label><input type="number" id="cfg-outfitBase" value="10" step="0.1"><span class="unit">%</span></div>
+          <div class="note">Efficiency gear: boots (gathering), eye watch (artisan), red culinary hat (cooking/brewing). Alchemy has none; Enhancing uses no efficiency. Outfits are per-member from the CSV (rule 1.5); on Enhancing they give speed.</div>
         </div>
 
         <div class="cfg-group">
@@ -399,6 +400,22 @@
     return Number.isFinite(n) ? Math.trunc(n) : dflt;
   }
 
+  // Outfit column (rule 1.5): empty or < 0 -> no piece (null); else enhancement level.
+  function toOutfit(val) {
+    const s = (val == null ? "" : String(val)).trim();
+    if (s === "") return null;
+    const n = Number(s);
+    if (!Number.isFinite(n)) return null;
+    return n < 0 ? null : Math.trunc(n);
+  }
+
+  // Read the '<Skill> Top/Bottom' cell, tolerating the 'Forging' header typo for Foraging.
+  function outfitCell(row, idx, skill, piece) {
+    let key = skill + " " + piece;
+    if (!(key in idx) && skill === "Foraging") key = "Forging " + piece;
+    return key in idx ? row[idx[key]] : null;
+  }
+
   function loadMembersFromCSV(text) {
     const rows = parseCSV(text);
     if (rows.length < 2) throw new Error("CSV has no data rows.");
@@ -427,6 +444,8 @@
           tool,
           enh: toInt(row[idx[s + " Tool Enh"]], DEFAULT_ENH),
           house: toInt(row[idx[s + " House"]], DEFAULT_HOUSE),
+          top: toOutfit(outfitCell(row, idx, s, "Top")),       // rule 1.5
+          bottom: toOutfit(outfitCell(row, idx, s, "Bottom")),
         };
       }
       out.push({
@@ -462,6 +481,7 @@
       gatheringEffGear: pct("cfg-gatheringEffGear"),
       artisanGear: pct("cfg-artisanGear"),
       cookBrewGear: pct("cfg-cookBrewGear"),
+      outfitBase: pct("cfg-outfitBase"),
       capeSpeed: pct("cfg-capeSpeed"),
       toolHolySpeed: pct("cfg-toolHolySpeed"),
       toolCelestialSpeed: pct("cfg-toolCelestialSpeed"),
@@ -489,7 +509,7 @@
     "cfg-enhToolHoly": 3.6, "cfg-enhToolCelestial": 4.2, "cfg-enhHouseSuccess": 0.05,
     "cfg-achievementDouble": 2, "cfg-communityDouble": 24, "cfg-gatheringGear": 4,
     "cfg-houseEffPerLevel": 1.5, "cfg-achievementEff": 2, "cfg-communityEff": 16.8,
-    "cfg-gatheringEffGear": 11.2, "cfg-artisanGear": 11.2, "cfg-cookBrewGear": 11.2,
+    "cfg-gatheringEffGear": 11.2, "cfg-artisanGear": 11.2, "cfg-cookBrewGear": 11.2, "cfg-outfitBase": 10,
     "cfg-capeSpeed": 5, "cfg-toolHolySpeed": 90, "cfg-toolCelestialSpeed": 105,
     "cfg-gloveSpeed": 11.2, "cfg-neckSpeed": 5.2, "cfg-enhCommunitySpeed": 24, "cfg-enhHouseSpeed": 1,
     "cfg-baseIntervalEnh": 8, "cfg-baseIntervalOther": 10, "cfg-startLevel": 100, "cfg-levelStep": 10,
@@ -533,13 +553,18 @@
     const isEnh = skill === ENH;
     const ef = enhFactor(sk.enh);
 
+    // Outfits (rule 1.5): per-piece 10% x enh table; null/undefined = no piece.
+    let outfit = 0;
+    if (sk.top != null) outfit += cfg.outfitBase * enhFactor(sk.top);
+    if (sk.bottom != null) outfit += cfg.outfitBase * enhFactor(sk.bottom);
+
     let efficiency = 0;
     if (!isEnh) {
       let gearEff = 0;                                    // Alchemy: no efficiency gear
       if (GATHERING.has(skill)) gearEff = cfg.gatheringEffGear;      // collector's boots
       else if (ARTISAN.has(skill)) gearEff = cfg.artisanGear;       // eye watch
       else if (COOKING_BREWING.has(skill)) gearEff = cfg.cookBrewGear; // red culinary hat
-      efficiency = sk.house * cfg.houseEffPerLevel + cfg.achievementEff + cfg.communityEff + gearEff;
+      efficiency = sk.house * cfg.houseEffPerLevel + cfg.achievementEff + cfg.communityEff + gearEff + outfit;
     }
 
     const progPerAction = isEnh
@@ -554,7 +579,8 @@
     if (isEnh) {
       const baseTool = sk.tool === "holy" ? cfg.enhToolHoly : cfg.enhToolCelestial;
       enhSuccessBonus = baseTool * ef + sk.house * cfg.enhHouseSuccess;   // rule 1.4.1, 1.3.1
-      speed = cfg.capeSpeed + cfg.gloveSpeed + cfg.neckSpeed + cfg.enhCommunitySpeed + sk.house * cfg.enhHouseSpeed;
+      speed = cfg.capeSpeed + cfg.gloveSpeed + cfg.neckSpeed + cfg.enhCommunitySpeed + sk.house * cfg.enhHouseSpeed
+            + outfit;                                                // rule 1.5 (speed on Enhancing)
       baseInterval = cfg.baseIntervalEnh;
     } else {
       const baseSpeed = sk.tool === "holy" ? cfg.toolHolySpeed : cfg.toolCelestialSpeed;
@@ -850,14 +876,18 @@
         td.className = "num";
         td.style.whiteSpace = "nowrap";
         const sub = 'color:var(--muted); font-size:0.72rem; font-weight:400; white-space:nowrap;';
+        const outfitBits = [];
+        if (sk.top != null) outfitBits.push("t+" + sk.top);
+        if (sk.bottom != null) outfitBits.push("b+" + sk.bottom);
         td.innerHTML = sk.level +
           '<div style="' + sub + '">' + toolAbbr + " +" + sk.enh + "</div>" +
-          '<div style="' + sub + '">h' + sk.house + "</div>";
+          '<div style="' + sub + '">h' + sk.house + "</div>" +
+          (outfitBits.length ? '<div style="' + sub + '">' + outfitBits.join(" ") + "</div>" : "");
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
     }
-    document.getElementById("previewSummary").textContent = "Member preview (" + members.length + " members) — each skill shows level, tool +enh, and house (h)";
+    document.getElementById("previewSummary").textContent = "Member preview (" + members.length + " members) — each skill shows level, tool +enh, house (h), and outfit (t/b) when present";
   }
 
   function updateRunEnabled() {
@@ -1222,13 +1252,16 @@
     URL.revokeObjectURL(url);
   }
   function buildMemberProfileCSV(memberList) {
-    // Player + per-skill level / tool / enhancement / house (re-importable).
+    // Player + per-skill level / tool / enhancement / house / outfit (re-importable).
     const header = ["Player"];
-    for (const s of SKILLS) header.push(s, s + " Tool", s + " Tool Enh", s + " House");
+    for (const s of SKILLS) header.push(s, s + " Tool", s + " Tool Enh", s + " House", s + " Top", s + " Bottom");
     const rows = [header];
     for (const m of memberList) {
       const row = [m.name];
-      for (const s of SKILLS) { const sk = m.skills[s]; row.push(sk.level, sk.tool, sk.enh, sk.house); }
+      for (const s of SKILLS) {
+        const sk = m.skills[s];
+        row.push(sk.level, sk.tool, sk.enh, sk.house, sk.top == null ? "" : sk.top, sk.bottom == null ? "" : sk.bottom);
+      }
       rows.push(row);
     }
     return toCsv(rows);

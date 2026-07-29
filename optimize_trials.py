@@ -84,6 +84,9 @@ class Config:
         self.eff_gathering_gear = 0.112        # collector's boots: Milking, Foraging, Woodcutting
         self.eff_artisan_gear = 0.112          # eye watch: Cheesesmithing, Crafting, Tailoring
         self.eff_cooking_brewing_gear = 0.112  # red culinary hat: Cooking, Brewing
+        # Outfits (rule 1.5): per-member top/bottom pieces, +10% each at +0, scaled by the
+        # enhancement table. Efficiency on all skills except Enhancing, where it's speed.
+        self.outfit_base = 0.10
         # Speed (rule 4.5)
         self.cape_speed = 0.05
         self.glove_speed = 0.112
@@ -132,6 +135,26 @@ def _to_int(val, default):
         return default
 
 
+def _to_outfit(val):
+    """Outfit column (rule 1.5): empty or < 0 -> no piece (None); else enhancement level."""
+    val = (val or "").strip()
+    if val == "":
+        return None
+    try:
+        n = int(float(val))
+    except ValueError:
+        return None
+    return None if n < 0 else n
+
+
+def _outfit_cell(row, skill, piece):
+    """Read '<Skill> Top/Bottom', tolerating the 'Forging' header typo for Foraging."""
+    v = row.get(f"{skill} {piece}")
+    if v is None and skill == "Foraging":
+        v = row.get(f"Forging {piece}")
+    return _to_outfit(v)
+
+
 def load_members(path, cfg):
     """Return list of member dicts: {name, role, skills:{skill:{level,tool,enh,house}}}."""
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -157,6 +180,8 @@ def load_members(path, cfg):
                     "tool": tool,
                     "enh": enh,
                     "house": house,
+                    "top": _outfit_cell(row, s, "Top"),            # rule 1.5
+                    "bottom": _outfit_cell(row, s, "Bottom"),
                 }
             members.append({
                 "name": name,
@@ -187,6 +212,10 @@ def player_skill_stats(member, skill, cfg, building_level=0):
     is_enh = skill == ENHANCING
     ef = enh_factor(sk["enh"])                              # rule 1.4.3
 
+    # ---- Outfits (rule 1.5): per-piece 10% x enh table; None = no piece ----
+    outfit = sum(cfg.outfit_base * enh_factor(lvl)
+                 for lvl in (sk.get("top"), sk.get("bottom")) if lvl is not None)
+
     # ---- Efficiency (rule 4.3; unused by Enhancing) ----
     if is_enh:
         efficiency = 0.0
@@ -202,7 +231,8 @@ def player_skill_stats(member, skill, cfg, building_level=0):
         efficiency = (sk["house"] * cfg.house_eff_per_level
                       + cfg.eff_achievement
                       + cfg.eff_community
-                      + gear_eff)
+                      + gear_eff
+                      + outfit)                # rule 1.5 (efficiency on non-Enhancing)
 
     # ---- Progress per action (rule 4.4) ----
     if is_enh:
@@ -224,7 +254,8 @@ def player_skill_stats(member, skill, cfg, building_level=0):
         enh_success_bonus = base_tool * ef + sk["house"] * cfg.enh_house_success  # rule 1.4.1, 1.3.1
         tool_speed = 0.0                                    # Enhancing tool gives success, not speed
         speed = (cfg.cape_speed + cfg.glove_speed + cfg.neck_speed
-                 + cfg.enh_community_speed + sk["house"] * cfg.enh_house_speed)
+                 + cfg.enh_community_speed + sk["house"] * cfg.enh_house_speed
+                 + outfit)                     # rule 1.5 (speed on Enhancing)
         base_interval = cfg.base_interval_enh
     else:
         base_speed = cfg.tool_holy_speed if sk["tool"] == "holy" else cfg.tool_celestial_speed
